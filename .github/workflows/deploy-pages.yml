@@ -3,7 +3,6 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'scripts/**', '.github/workflows/deploy-pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -20,16 +19,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      # Files uploaded through the GitHub website lose their folders.
+      # This puts them back where the app expects them.
+      - name: Arrange files into folders
+        run: |
+          set -e
+          if [ -f site/index.html ]; then
+            echo "Folder layout already present."
+          else
+            mkdir -p site/assets/css site/assets/js site/assets/icons site/assets/vendor scripts
+            mv index.html config.js manifest.webmanifest sw.js site/
+            mv app.css offline.css site/assets/css/
+            mv api.js app.js sync-ui.js pwa.js theme-init.js site/assets/js/
+            mv apple-touch-icon.png favicon-32.png favicon.svg icon-192.png icon-512.png maskable-512.png site/assets/icons/
+            mv exceljs.min.js site/assets/vendor/
+            mv build.mjs scripts/
+            touch site/.nojekyll
+            echo "Arranged uploaded files into site/ and scripts/."
+          fi
+
       - name: Check JavaScript syntax
         run: for f in site/assets/js/*.js site/sw.js site/config.js; do node --check "$f"; done
+
       - name: Build
         env:
           APPS_SCRIPT_URL: ${{ vars.APPS_SCRIPT_URL }}
         run: node scripts/build.mjs
+
       - uses: actions/configure-pages@v5
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
