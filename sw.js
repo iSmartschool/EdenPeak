@@ -25,8 +25,16 @@ const PRECACHE = /*__PRECACHE_LIST__*/[
 // Excel results template.
 const LAZY = ['assets/vendor/exceljs.min.js'];
 
-const SHELL_CACHE = 'iss-shell-' + BUILD_ID;
-const RUNTIME_CACHE = 'iss-runtime-v1';
+// Several schools can share one address (…github.io/SchoolA/, …/SchoolB/):
+// cache names carry this copy's folder so one school's update never
+// removes another school's saved app.
+const SCOPE_PATH = new URL(self.registration.scope).pathname;
+const NS = SCOPE_PATH === '/' ? '' : ':' + SCOPE_PATH;
+const SHELL_PREFIX = 'iss-shell' + NS + '-';
+const SHELL_CACHE = SHELL_PREFIX + BUILD_ID;
+const RUNTIME_CACHE = 'iss-runtime' + NS + '-v1';
+// Names used before per-school caches (shared by every copy).
+const LEGACY = (k) => /^iss-shell-[^:]*$/.test(k) && !k.startsWith('iss-shell:') || k === 'iss-runtime-v1';
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -47,7 +55,8 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k.startsWith('iss-shell-') && k !== SHELL_CACHE).map((k) => caches.delete(k)));
+    // Only this copy's old versions (and the old shared names) are removed.
+    await Promise.all(keys.filter((k) => (k.startsWith(SHELL_PREFIX) && k !== SHELL_CACHE) || (NS && LEGACY(k))).map((k) => caches.delete(k)));
     if (self.registration.navigationPreload) { try { await self.registration.navigationPreload.disable(); } catch (e) {} }
     await self.clients.claim();
     // Warm the optional files without delaying activation.
@@ -111,7 +120,7 @@ self.addEventListener('fetch', (event) => {
 // Background Sync: ask any open iSmartSchool window to send its outbox.
 // (Sending needs the signed-in user's session, which lives in the page.)
 self.addEventListener('sync', (event) => {
-  if (event.tag !== 'iss-outbox') return;
+  if (event.tag !== 'iss-outbox' + NS) return;
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     .then((list) => list.forEach((c) => c.postMessage({ type: 'FLUSH_OUTBOX' }))));
 });
