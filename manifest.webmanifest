@@ -1,0 +1,25 @@
+{
+  "id": "./",
+  "name": "iSmartSchool – School Management",
+  "short_name": "iSmartSchool",
+  "description": "Students, fees, canteen, attendance, results, report cards and payroll for GES schools. Works offline.",
+  "lang": "en-GH",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0f1923",
+  "theme_color": "#152230",
+  "categories": ["education", "productivity", "business"],
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Take attendance", "short_name": "Attendance", "url": "./?page=attendance", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Canteen register", "short_name": "Canteen", "url": "./?page=canteen", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Record a fee payment", "short_name": "Fees", "url": "./?page=fees", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

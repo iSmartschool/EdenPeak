@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="description" content="iSmartSchool – school management for GES schools: students, fees, canteen, attendance, results, report cards and payroll. Works offline.">
+  <meta name="theme-color" content="#152230">
+  <meta name="color-scheme" content="dark light">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="iSmartSchool">
+  <title>iSmartSchool – GES SMS</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <script src="assets/js/theme-init.js"></script>
+  <link rel="stylesheet" href="assets/css/app.css">
+  <link rel="stylesheet" href="assets/css/offline.css">
+</head>
+<body>
+<noscript><div class="noscript">iSmartSchool needs JavaScript. Please enable it in your browser settings.</div></noscript>
+<div id="loginOverlay">
+  <button type="button" class="login-theme theme-btn" aria-label="Switch light or dark mode" title="Switch light / dark mode">🌙</button>
+  <div class="login-box">
+    <div id="loginLogo" style="margin-bottom:18px;font-size:64px;">🏫</div>
+    <h2 style="color:var(--green);margin-bottom:5px;font-weight:700;">iSmartSchool System</h2>
+    <p id="loginSubtitle" style="color:var(--text-muted);margin-bottom:25px;font-size:14px;">School Management System</p>
+    <div id="setupForm"></div>
+    <div id="loginForm">
+      <h3 style="color:var(--text-primary);margin-bottom:20px;">Login</h3>
+      <input id="loginEmail" class="form-control" type="email" placeholder="Email Address" autocomplete="username">
+      <input id="loginPassword" class="form-control" type="password" placeholder="Password" style="margin-top:8px;" autocomplete="current-password">
+      <label class="remember-row" for="loginRemember">
+        <input type="checkbox" id="loginRemember">
+        <span>Keep me signed in on this device<small>Needed to open the app offline. Leave unticked on a shared computer.</small></span>
+      </label>
+      <button class="btn" id="loginBtn" style="width:100%;margin-top:15px;">🔐 Sign In</button>
+      <p id="loginError" style="color:var(--red);margin-top:10px;font-size:13px;" role="alert"></p>
+      <p id="loginNet" class="login-net hidden" role="status"></p>
+      <button type="button" class="btn btn-secondary install-btn hidden" id="installBtnLogin">⬇️ Install app</button>
+      <p style="font-size:11px;color:var(--text-muted);margin-top:16px;">© iSmartSchool 2026. All Rights Reserved!</p>
+    </div>
+  </div>
+</div>
+<div class="app-layout" id="appLayout">
+  <div class="mobile-topbar">
+    <button id="menuBtn" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">☰</button>
+    <span id="mobileTitle">Dashboard</span>
+    <button type="button" class="sync-pill" data-sync-pill aria-label="Connection and sync status"><span class="dot"></span><span class="txt">Online</span></button>
+    <button type="button" class="theme-btn" aria-label="Switch light or dark mode" title="Switch light / dark mode">🌙</button>
+    <span class="mobile-crest" id="mobileCrest">🏫</span>
+  </div>
+  <div id="navBackdrop"></div>
+  <div class="app-sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-crest" id="sidebarCrest">🏫</div>
+      <div class="sidebar-title"><span id="sidebarSchoolName">iSmartSchool</span><br><small id="sidebarUser" style="color:var(--text-muted)"></small></div>
+    </div>
+    <div id="navMenu"></div>
+    <div class="sidebar-footer"><button type="button" class="theme-btn theme-toggle" id="themeSideBtn" style="margin-bottom:8px;">🌙 Dark mode</button><button type="button" class="install-btn hidden" id="installBtnSide" style="margin-bottom:8px;">⬇️ Install app</button><button type="button" id="syncCenterBtn" style="margin-bottom:8px;">🔄 Sync &amp; offline data</button><button id="changePwBtn">🔑 Change Password</button><button id="logoutBtnSide" class="side-logout">🚪 Logout</button></div>
+  </div>
+  <div class="main-content">
+    <div class="page-header"><h2 id="pageTitle">Dashboard</h2><div class="page-header-actions"><button type="button" class="sync-pill" data-sync-pill aria-label="Connection and sync status"><span class="dot"></span><span class="txt">Online</span></button><button class="logout-btn-top" id="logoutBtn">🚪 Logout</button></div></div>
+    <div id="connBanner" class="conn-banner hidden" role="status" aria-live="polite"></div>
+    <div id="pageBody"></div>
+  </div>
+</div>
+<nav class="bottom-nav" id="bottomNav" aria-label="Quick navigation"></nav>
+<div id="printOverlay" class="print-overlay"><div id="printContent"></div></div>
+<div id="modalContainer"></div>
+<div id="toastHost" class="toast-host" aria-live="polite"></div>
+<script src="config.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/sync-ui.js"></script>
+<script src="assets/js/pwa.js"></script>
+</body>
+</html>

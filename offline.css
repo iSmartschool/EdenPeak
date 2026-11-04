@@ -1,0 +1,78 @@
+/* iSmartSchool – connection status, Sync Center, toasts, login additions.
+   Uses the theme tokens defined in app.css, so it follows light/dark mode. */
+
+.noscript{padding:24px;text-align:center;background:var(--red-bg);color:var(--red);font-weight:600;}
+
+/* ── Login additions ── */
+.remember-row{display:flex;gap:10px;align-items:flex-start;text-align:left;margin:12px 2px 0;cursor:pointer;color:var(--text-primary);font-size:13px;line-height:1.35;}
+.remember-row input{width:18px;height:18px;margin-top:1px;flex-shrink:0;accent-color:var(--green);}
+.remember-row small{display:block;color:var(--text-muted);font-size:11.5px;margin-top:2px;}
+.login-net{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--gold-bg);color:var(--gold);font-size:12.5px;line-height:1.45;text-align:left;}
+.install-btn.btn{width:100%;margin-top:10px;}
+
+/* ── Status pill ── */
+.page-header-actions{display:flex;gap:10px;align-items:center;}
+.sync-pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-secondary);
+  border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit;line-height:1;transition:background .2s,border-color .2s,color .2s;}
+.sync-pill:hover{border-color:var(--green);}
+.sync-pill .dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0;}
+.sync-pill.is-offline{color:var(--red);border-color:rgba(255,61,90,.4);background:var(--red-bg);}
+.sync-pill.is-offline .dot{background:var(--red);}
+.sync-pill.is-warn{color:var(--gold);border-color:rgba(255,193,7,.45);background:var(--gold-bg);}
+.sync-pill.is-warn .dot{background:var(--gold);}
+.sync-pill.is-syncing{color:var(--blue);border-color:rgba(0,188,212,.4);background:var(--blue-bg);}
+.sync-pill.is-syncing .dot{background:var(--blue);animation:issPulse 1s ease-in-out infinite;}
+@keyframes issPulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+/* The topbar styles its buttons as 44px squares; the pill must stay a pill. */
+.mobile-topbar .sync-pill{width:auto;height:36px;padding:0 11px;font-size:12px;border-radius:999px;flex-shrink:0;}
+@media(max-width:420px){ .mobile-topbar .sync-pill .txt{max-width:74px;overflow:hidden;text-overflow:ellipsis;} }
+
+/* ── Connection banner ── */
+.conn-banner{border-radius:12px;padding:11px 14px;margin:0 0 16px;font-size:13px;line-height:1.5;}
+.conn-banner.is-offline{background:var(--red-bg);color:var(--text-primary);border:1px solid rgba(255,61,90,.35);}
+.conn-banner.is-warn{background:var(--gold-bg);color:var(--text-primary);border:1px solid rgba(255,193,7,.4);}
+.conn-banner b{color:var(--text-primary);}
+.link-btn{background:none;border:none;padding:0;margin-left:4px;color:var(--green);font-weight:700;text-decoration:underline;cursor:pointer;font:inherit;}
+
+/* ── Toasts ── */
+.toast-host{position:fixed;left:50%;transform:translateX(-50%);top:16px;z-index:20000;display:flex;flex-direction:column;gap:8px;width:min(480px,calc(100vw - 24px));pointer-events:none;}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:10px;background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);
+  border-left:4px solid var(--blue);border-radius:12px;padding:11px 12px 11px 14px;box-shadow:var(--shadow);font-size:13.5px;line-height:1.4;
+  opacity:0;transform:translateY(-10px);transition:opacity .2s,transform .2s;}
+.toast.show{opacity:1;transform:none;}
+.toast>span{flex:1;}
+.toast-success{border-left-color:var(--green);} .toast-warn{border-left-color:var(--gold);} .toast-error{border-left-color:var(--red);}
+.toast-action{background:var(--green);color:#fff;border:none;border-radius:999px;padding:7px 14px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;}
+.toast-close{background:none;border:none;color:var(--text-muted);font-size:20px;line-height:1;cursor:pointer;padding:0 2px;}
+@media(min-width:901px){ .toast-host{top:96px;left:auto;right:40px;transform:none;width:min(400px,calc(100vw - 80px));} }
+@media(max-width:900px){ .toast-host{top:calc(66px + env(safe-area-inset-top));} }
+
+/* ── Sync Center ── */
+.sync-center{text-align:left;color:var(--text-secondary);font-size:13px;}
+.sync-center h4{color:var(--text-primary);font-size:14px;margin:18px 0 8px;display:flex;align-items:center;gap:8px;}
+.sc-status{background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text-primary);font-weight:600;}
+.sc-status .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--text-muted);margin-right:6px;}
+.sc-status .dot.ok{background:var(--green);} .sc-status .dot.bad{background:var(--red);}
+.sc-alert{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--red-bg);color:var(--red);font-weight:600;}
+.sc-count{background:var(--bg-input);color:var(--text-secondary);border-radius:999px;padding:1px 9px;font-size:12px;}
+.sc-count.warn{background:var(--gold-bg);color:var(--gold);}
+.sc-list{list-style:none;margin:0;padding:0;}
+.sc-item{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);}
+.sc-item:last-child{border-bottom:none;}
+.sc-main{min-width:0;flex:1;}
+.sc-label{color:var(--text-primary);font-weight:600;word-break:break-word;}
+.sc-meta{color:var(--text-muted);font-size:12px;margin-top:2px;font-weight:400;}
+.sc-err{color:var(--red);font-size:12px;margin-top:3px;word-break:break-word;}
+.sc-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;}
+.sc-actions .btn{margin:0;}
+.sc-empty,.sc-hint{color:var(--text-muted);font-size:12.5px;margin:4px 0;}
+.sc-hist{margin-top:14px;} .sc-hist summary{cursor:pointer;color:var(--text-primary);font-weight:600;}
+.sc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.sc-grid>div{background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:2px;}
+.sc-grid span{font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--text-muted);}
+.sc-grid b{color:var(--text-primary);}
+.sc-buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+.sc-buttons .btn{margin:0;}
+.sc-buttons .btn:disabled{opacity:.5;}
+
+@media print{ .toast-host,.conn-banner,.sync-pill{display:none!important;} }
