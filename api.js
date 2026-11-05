@@ -683,7 +683,10 @@
     }
   };
 
-  ready.then(function () { setState({ persistent: store.persistent }); loadOutbox(); purgeOldCache(); removeSharedLegacyData(); });
+  ready.then(function () { setState({ persistent: store.persistent }); loadOutbox(); purgeOldCache();
+    // After every script on the page has run, so it can see which app.js is loaded.
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', removeSharedLegacyData); else removeSharedLegacyData();
+  });
 
   // Versions before per-school storage kept everything in one shared
   // database and one shared sign-in slot. Remove them so no school's data
@@ -691,6 +694,9 @@
   // still holds unsent changes is kept (and reported) rather than lost.
   function removeSharedLegacyData() {
     if (!NS) return;
+    // An older app.js (uploaded without the matching api.js) still keeps its
+    // sign-in here: leave it alone rather than sign the user out on every load.
+    if (global.App && App._SESSION_KEY === 'iss-session') { console.warn('[ISSApi] app.js is older than api.js — upload the matching app.js.'); return; }
     try { localStorage.removeItem('iss-session'); sessionStorage.removeItem('iss-session'); } catch (e) {}
     if (!global.indexedDB || !indexedDB.databases) return;
     indexedDB.databases().then(function (list) {

@@ -432,7 +432,7 @@ var App = {
      the app, needed to open it offline); otherwise sessionStorage (ends when
      the tab or window closes). Only the session token and the profile the
      server returned are kept — never the password. ── */
-  _SESSION_KEY: 'iss-session',
+  _SESSION_KEY: 'iss-session' + ISSApi.nsSuffix,   // one sign-in slot per school copy
   _readSession: function() {
     var raw = null;
     try { raw = sessionStorage.getItem(this._SESSION_KEY) || localStorage.getItem(this._SESSION_KEY); } catch (e) {}
