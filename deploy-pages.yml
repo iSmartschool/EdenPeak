@@ -7,7 +7,6 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'scripts/**', '.github/workflows/deploy-pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -28,6 +27,33 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      # Files uploaded through the GitHub website lose their folders.
+      # This puts them back where the app expects them.
+      - name: Arrange files into folders
+        run: |
+          set -e
+          # A browser saves a second download as "app (2).js". Such a copy is
+          # never used, so the app would silently keep the old file.
+          renamed=$(ls | grep -E ' \([0-9]+\)\.' || true)
+          if [ -n "$renamed" ]; then
+            echo "::error::These files have a browser-added number in their name and will NOT be used: $renamed"
+            echo "::error::Delete the old file with the plain name, then rename each of these to its plain name (e.g. 'app (2).js' -> 'app.js')."
+            exit 1
+          fi
+          if [ -f site/index.html ]; then
+            echo "Folder layout already present."
+          else
+            mkdir -p site/assets/css site/assets/js site/assets/icons site/assets/vendor scripts
+            mv index.html config.js manifest.webmanifest sw.js site/
+            mv app.css offline.css site/assets/css/
+            mv api.js app.js sync-ui.js pwa.js theme-init.js site/assets/js/
+            mv apple-touch-icon.png favicon-32.png favicon.svg icon-192.png icon-512.png maskable-512.png site/assets/icons/
+            mv exceljs.min.js site/assets/vendor/
+            mv build.mjs scripts/
+            touch site/.nojekyll
+            echo "Arranged uploaded files into site/ and scripts/."
+          fi
 
       - name: Check JavaScript syntax
         run: for f in site/assets/js/*.js site/sw.js site/config.js; do node --check "$f"; done
