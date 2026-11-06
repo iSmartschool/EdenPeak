@@ -93,7 +93,7 @@
     if (net) {
       var msg = !API.isConfigured() ? "This copy of the app isn't connected to a school server yet (config.js)."
         : st.network === 'offline' ? "You're offline. Signing in needs an internet connection. If you ticked “Keep me signed in” last time, reopen the app and you'll go straight in."
-        : st.network === 'unreachable' ? "The school server can't be reached right now. Please try again shortly." : '';
+        : st.network === 'unreachable' ? "This device is online, but the school server isn't answering. If this continues, check the Apps Script deployment (Who has access: Anyone)." : '';
       net.textContent = msg; net.classList.toggle('hidden', !msg);
     }
     if (document.getElementById('syncCenterBody')) renderCenter();

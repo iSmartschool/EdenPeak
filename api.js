@@ -94,6 +94,7 @@
     registerFirstAdmin: "You're offline. Setting up the first account needs an internet connection.",
     _default: "You're offline. This action needs a connection to the school server — please try again when you're back online."
   };
+  var UNREACHABLE_MSG = "This device is online, but the school server didn't answer. Try again in a minute. If it keeps happening, the administrator should check the Apps Script deployment: Who has access must be \"Anyone\" and the newest version deployed (Troubleshooting: \"No server\").";
   var QUEUED_MSG = "Saved on this device. It will be sent to the server automatically when you're back online.";
 
   function isRead(fn) { return /^(get|search)/.test(fn) || !!PUBLIC_READS[fn]; }
@@ -281,12 +282,13 @@
   }
   // A failed call: tell "no internet" apart from "internet fine, but the
   // school server can't be reached" (wrong URL, deployment not public…).
+  // Resolves once the state is known, so callers can word their message.
   function markUnreachable(kind) {
-    if (global.navigator && navigator.onLine === false) { setState({ network: 'offline' }); startRetryLoop(); return; }
-    if (kind === 'unavailable' || kind === 'timeout') { setState({ network: 'unreachable' }); startRetryLoop(); return; }
-    fetch('manifest.webmanifest?__probe=' + Date.now(), { cache: 'no-store' })
-      .then(function (r) { setState({ network: r.ok ? 'unreachable' : 'offline' }); }, function () { setState({ network: 'offline' }); })
-      .then(startRetryLoop);
+    if (global.navigator && navigator.onLine === false) { setState({ network: 'offline' }); startRetryLoop(); return Promise.resolve('offline'); }
+    if (kind === 'unavailable' || kind === 'timeout') { setState({ network: 'unreachable' }); startRetryLoop(); return Promise.resolve('unreachable'); }
+    return fetch('manifest.webmanifest?__probe=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? 'unreachable' : 'offline'; }, function () { return 'offline'; })
+      .then(function (net) { setState({ network: net }); startRetryLoop(); return net; });
   }
   var retryTimer = null, retryDelay = 15000;
   function startRetryLoop() {
@@ -575,13 +577,18 @@
     var knownOffline = global.navigator && navigator.onLine === false;
 
     function onNetworkFailure(err) {
-      markUnreachable(err.kind);
+      var probing = markUnreachable(err.kind);
       if (read && !NO_CACHE[fn]) return fromCache(fn, params, { kind: state.network });
       if (rule) return enqueue(fn, params);
       if (err.kind === 'timeout' && !read) {
         throw makeError('The server took too long to answer. The change may still have been saved — please check before trying again.', { offline: true, kind: 'timeout' });
       }
-      throw offlineError(fn, err.kind);
+      // Internet works but the school server gave no usable answer: say so,
+      // instead of "You're offline", so the real cause gets looked at.
+      return probing.then(function (net) {
+        if (net === 'unreachable') throw makeError(UNREACHABLE_MSG, { offline: true, kind: 'unreachable', name: 'OfflineError' });
+        throw offlineError(fn, err.kind);
+      });
     }
 
     if (knownOffline) return ready.then(function () { return onNetworkFailure({ kind: 'network' }); });
