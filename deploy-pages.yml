@@ -21,6 +21,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -56,7 +57,7 @@ jobs:
           fi
 
       - name: Check JavaScript syntax
-        run: for f in site/assets/js/*.js site/sw.js site/config.js; do node --check "$f"; done
+        run: for f in site/assets/js/*.js site/sw.js site/config.js scripts/build.mjs; do node --check "$f"; done
 
       - name: Build
         env:
@@ -72,6 +73,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

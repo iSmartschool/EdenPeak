@@ -466,7 +466,7 @@ var App = {
       '<h2 style="color:var(--gold)">Create Admin</h2>' +
       '<input id="suName" class="form-control" placeholder="Full Name">' +
       '<input id="suEmail" class="form-control" type="email" placeholder="Email">' +
-      '<input id="suPass" class="form-control" type="password" placeholder="Password (min 6 characters)">' +
+      '<input id="suPass" class="form-control" type="password" placeholder="Password (min 8 characters)">' +
       '<button class="btn" id="setupBtn" style="width:100%">Create Account</button>';
     document.getElementById('loginForm').style.display = 'none';
     document.getElementById('setupBtn').onclick = function() {
@@ -589,13 +589,13 @@ var App = {
     var s = this;
     s.modal.show('🔑 Change Password',
       '<input id="cpCur" class="form-control" type="password" placeholder="Current password">' +
-      '<input id="cpNew" class="form-control" type="password" placeholder="New password (min 6 characters)">' +
+      '<input id="cpNew" class="form-control" type="password" placeholder="New password (min 8 characters)">' +
       '<input id="cpNew2" class="form-control" type="password" placeholder="Confirm new password">' +
       '<div id="cpErr" style="color:var(--red);font-size:13px;min-height:18px;margin-top:6px;"></div>',
       [{text:'Cancel',cls:'btn-secondary'},{text:'Save',cb:function(){
         var cur=document.getElementById('cpCur').value, n1=document.getElementById('cpNew').value, n2=document.getElementById('cpNew2').value, err=document.getElementById('cpErr');
         if (!cur||!n1) { err.textContent='Please fill all fields.'; return false; }
-        if (n1.length<6) { err.textContent='New password must be at least 6 characters.'; return false; }
+        if (n1.length<8) { err.textContent='New password must be at least 8 characters.'; return false; }
         if (n1!==n2) { err.textContent='New passwords do not match.'; return false; }
         err.textContent='Saving…';
         s.call('changePassword',{currentPassword:cur,newPassword:n1}).then(function(r){
@@ -2313,7 +2313,7 @@ var App = {
         var email=document.getElementById('nuEmail').value.trim(), name=document.getElementById('nuName').value.trim(), pass=document.getElementById('nuPass').value;
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { s.modal.alert('Please enter a valid email.'); return; }
         if (!name) { s.modal.alert('Please enter a name.'); return; }
-        if (pass.length<6) { s.modal.alert('Initial password must be at least 6 characters.'); return; }
+        if (pass.length<8) { s.modal.alert('Initial password must be at least 8 characters.'); return; }
         s.safeSubmit(this, function(){
           return s.call('addUser',{email:email,name:name,password:pass,role:document.getElementById('nuRole').value}).then(function(r){ if(r.success) s.loadUsersTab(c); else s.modal.alert('❌ '+r.message); });
         });
@@ -2331,7 +2331,7 @@ var App = {
       [{text:'Cancel',cls:'btn-secondary'},{text:'Save',cb:function(){
         var name=document.getElementById('euName').value.trim(), role=document.getElementById('euRole').value, pass=document.getElementById('euPass').value, err=document.getElementById('euErr');
         if (!name) { err.textContent='Name is required.'; return false; }
-        if (pass && pass.length<6) { err.textContent='Password must be at least 6 characters.'; return false; }
+        if (pass && pass.length<8) { err.textContent='Password must be at least 8 characters.'; return false; }
         err.textContent='Saving…';
         s.call('updateUser',{email:u.email,name:name,role:role,password:pass||undefined}).then(function(r){
           if (r.success) { s.modal.close(); s.loadUsersTab(document.getElementById('settingsContent')); }

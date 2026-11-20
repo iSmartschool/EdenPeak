@@ -16,5 +16,10 @@ window.ISS_CONFIG = {
 
   // How often (minutes) the app refreshes its offline copy of everyday
   // screens while online. 0 turns automatic refreshing off.
-  prefetchEveryMinutes: 10
+  prefetchEveryMinutes: 10,
+
+  // Most saved screens kept on a device (oldest removed first). A school with
+  // many students saves one answer per student and screen; this stops it
+  // growing without limit.
+  maxSavedScreens: 600
 };

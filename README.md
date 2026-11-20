@@ -134,11 +134,28 @@ deployment (step 1.4) — the URL stays the same.
   offline uses the saved profile and re-checks it with the server as soon as
   it is back online.
 
+### Security & maintenance notes (audit update)
+
+- **Sessions:** the Settings sheet now stores only a SHA-256 of each session token, so
+  anyone who can open the spreadsheet cannot sign in as somebody else. **After you publish
+  this version everyone signs in once more** (old sessions are no longer recognised).
+- Changing or resetting a password, deactivating or deleting a user signs that person out
+  on every device (the device you change it from stays signed in).
+- New passwords must be **8+ characters**; existing passwords keep working.
+- `Settings → StudentIdPrefix` (add a row if missing) sets the letters in student IDs
+  (default `EPA`, so existing numbering is unchanged).
+- Canteen payments taken offline may be dated at most `MAX_BACKDATE_DAYS` (60, in `Code.gs`) back.
+- Fee-payment duplicate protection no longer reads the whole ledger on every payment
+  (faster, and the lock is held for less time with big schools).
+- `maxSavedScreens` in `config.js` caps what is kept on each device; background refreshing
+  pauses while the tab is hidden (saves Apps Script daily quota).
+
 ### Known limits
 
 - Scores entered offline are saved into whatever term is current **when they
   sync** — sync before running the term rollover (the outbox count is on the
   status pill).
+- Fee payments and expenses entered offline are stamped with the term/year that is current **when they sync** (same as scores) — sync before running the rollover.
 - Fee overview and balances shown offline do not include payments still in
   the outbox (the outbox and its count are shown instead).
 

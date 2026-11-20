@@ -325,6 +325,7 @@
     var scope = scopeFor(fn);
     if (!scope || NO_CACHE[fn] || data === undefined) return Promise.resolve();
     var entry = { key: cacheKey(scope, fn, params), user: scope, fn: fn, params: withoutToken(params), data: data, savedAt: Date.now() };
+    if (++putsSincePurge >= 150) { putsSincePurge = 0; purgeOldCache(); }
     return ready.then(function () { return store.put('cache', entry); }).catch(function (e) { console.warn('[ISSApi] cache write failed', e); });
   }
   function cacheGet(fn, params) {
@@ -368,10 +369,23 @@
       return overlay(fn, params, clone(e.data));
     });
   }
+  // Saved screens are removed after CACHE_DAYS, and the store is also capped
+  // (oldest first) so a large school — one saved answer per student and screen —
+  // can never fill the device.
+  var MAX_CACHE_ENTRIES = Math.max(100, Number(CFG.maxSavedScreens) || 600);
   function purgeOldCache() {
     var limit = Date.now() - CACHE_DAYS * 86400000;
-    return ready.then(function () { return store.delWhere('cache', function (v) { return !v.savedAt || v.savedAt < limit; }); }).catch(function () {});
+    return ready.then(function () { return store.delWhere('cache', function (v) { return !v.savedAt || v.savedAt < limit; }); })
+      .then(function () { return store.all('cache'); })
+      .then(function (all) {
+        if (!all || all.length <= MAX_CACHE_ENTRIES) return;
+        var drop = {};
+        all.sort(function (a, b) { return (a.savedAt || 0) - (b.savedAt || 0); })
+           .slice(0, all.length - MAX_CACHE_ENTRIES).forEach(function (e) { drop[e.key] = 1; });
+        return store.delWhere('cache', function (v) { return !!drop[v.key]; });
+      }).catch(function () {});
   }
+  var putsSincePurge = 0;
   function clearUserCache(email) {
     return ready.then(function () { return store.delWhere('cache', function (v) { return v.user === email; }); })
       .then(function () { return store.del('meta', 'prefetch:' + email); }).catch(function () {});
@@ -614,6 +628,8 @@
     if (!session || state.network !== 'online' || !PREFETCH_MIN) return Promise.resolve(false);
     var conn = global.navigator && navigator.connection;
     if (conn && conn.saveData && !force) return Promise.resolve(false);
+    // A tab nobody is looking at does not need fresh data: saves Apps Script quota (daily limits).
+    if (!force && global.document && document.visibilityState === 'hidden') return Promise.resolve(false);
     var me = session.email, key = 'prefetch:' + me;
     return store.get('meta', key).then(function (row) {
       if (!force && row && Date.now() - row.value < PREFETCH_MIN * 60000) return false;
