@@ -51,18 +51,28 @@ jobs:
             mv api.js app.js sync-ui.js pwa.js theme-init.js site/assets/js/
             mv apple-touch-icon.png favicon-32.png favicon.svg icon-192.png icon-512.png maskable-512.png site/assets/icons/
             mv exceljs.min.js site/assets/vendor/
-            mv build.mjs scripts/
+            mv build.mjs make-gas-index.mjs scripts/
             touch site/.nojekyll
             echo "Arranged uploaded files into site/ and scripts/."
           fi
 
       - name: Check JavaScript syntax
-        run: for f in site/assets/js/*.js site/sw.js site/config.js scripts/build.mjs; do node --check "$f"; done
+        run: for f in site/assets/js/*.js site/sw.js site/config.js scripts/build.mjs scripts/make-gas-index.mjs; do node --check "$f"; done
 
       - name: Build
         env:
           APPS_SCRIPT_URL: ${{ vars.APPS_SCRIPT_URL }}
         run: node scripts/build.mjs
+
+      # The Apps Script-hosted page (Index.html) is generated from the same files, so it can never
+      # drift from the GitHub site. Download it from this run's "Artifacts" and paste it into Apps Script.
+      - name: Generate Apps Script Index.html
+        run: mkdir -p gas-out && node scripts/make-gas-index.mjs gas-out/Index.html
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apps-script-Index.html
+          path: gas-out/Index.html
 
       - uses: actions/configure-pages@v5
 

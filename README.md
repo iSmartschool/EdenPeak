@@ -24,6 +24,7 @@ offline are sent automatically when the connection returns.
 │   ├── Api.gs                 ← NEW: JSON API for the Pages app
 │   └── CanteenModule.gs       ← updated (offline payments keep their date)
 ├── scripts/build.mjs          ← build: stamps versions, checks files
+├── scripts/make-gas-index.mjs ← builds the Apps Script Index.html from the files above
 └── .github/workflows/deploy-pages.yml
 ```
 
@@ -150,12 +151,38 @@ deployment (step 1.4) — the URL stays the same.
 - `maxSavedScreens` in `config.js` caps what is kept on each device; background refreshing
   pauses while the tab is hidden (saves Apps Script daily quota).
 
+- **Apps Script page generated, not hand-kept:** `scripts/make-gas-index.mjs` builds `Index.html` for the
+  Apps Script web app from the same files as this site. The deploy workflow runs it and attaches the
+  result to the run (Actions → the run → Artifacts → `apps-script-Index.html`). Paste it into Apps Script
+  after each change; never edit that file by hand.
+- **Payroll is not stored on devices** (salaries, bank details). To allow offline payroll on private devices
+  set `cachePayroll: true` in `config.js`.
+- **Picture links** (`https://`) for photos/crest are refused unless an administrator adds the Settings row
+  `AllowImageLinks` = `true`; uploaded pictures always work.
+- Failed sign-ins for an address are slowed down (0.3 s, 0.6 s … up to 2 s per try), on top of the lock-out.
+- The canteen balance list is kept in the script cache for up to 5 minutes and refreshed automatically
+  after every canteen change (`CanteenLedgerVersion` in Settings). If you edit the canteen sheet by hand,
+  the screens catch up within 5 minutes.
+- Pop-ups are real dialogs for keyboard and screen-reader users (focus stays inside, Esc closes), fields
+  have accessible names, focus is visible, and animations stop for people who ask for reduced motion.
+- `.github/dependabot.yml` opens a monthly pull request when a GitHub Action used by the deploy workflow has a
+  new release. Actions are referenced by their official version tags (`actions/*@v4`), not by commit hash.
+
+- **Formula safety:** anything typed or uploaded that starts with `=` or `@` (or `+`/`-` followed by more than a
+  number) is saved as plain text, so a pupil name like `=HYPERLINK(...)` can never run as a spreadsheet formula.
+- **Personal details are limited by role:** address, parent name, phone numbers, medical notes, date of birth and
+  scholarship are sent only to roles that have the Students or Fees page. Others (for example a results-only
+  teacher) get name, ID, class, gender and status.
+- **Rollover is all-or-nothing:** if it fails part-way, students and settings are put back, so running it again can
+  never count a term's fees twice. It tells you when no fee items were set up for the new term. Promotion refuses
+  to run again at the start of a year if it was already done in Third Term.
+
 ### Known limits
 
-- Scores entered offline are saved into whatever term is current **when they
-  sync** — sync before running the term rollover (the outbox count is on the
-  status pill).
-- Fee payments and expenses entered offline are stamped with the term/year that is current **when they sync** (same as scores) — sync before running the rollover.
+- Things entered offline (expenses, scores, conduct, attendance, canteen) are stamped with the term the
+  device knew about **when they were made**; the server accepts that only for the current or the
+  immediately previous term. **Fee payments are the exception**: money received after a rollover is
+  stamped with the term in which it syncs, so it reduces what the student owes now.
 - Fee overview and balances shown offline do not include payments still in
   the outbox (the outbox and its count are shown instead).
 

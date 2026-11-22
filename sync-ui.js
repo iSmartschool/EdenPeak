@@ -197,7 +197,7 @@
     if (has('fees') || has('finances')) jobs.push(['getAllFeeOverview']);
     if (has('results')) jobs.push(['getConductOptions'], ['getScoreWeights']);
     if (has('expenses')) jobs.push(['getExpenses'], ['getExpenseCategories']);
-    if (has('payroll')) jobs.push(['getPayrollSettings'], ['getPayrollStaff']);
+    if (has('payroll') && (window.ISS_CONFIG || {}).cachePayroll === true) jobs.push(['getPayrollSettings'], ['getPayrollStaff']);
     if (has('finances')) jobs.push(['getFinancialSummary']);
     return API.prefetch(jobs, !!force);
   }

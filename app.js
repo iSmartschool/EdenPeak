@@ -3615,6 +3615,69 @@ App.cardifyTables = function(root){
   window.addEventListener('resize', function(){ if (!queued) { queued=true; requestAnimationFrame(run); } App.fitPrintPreview(); });
 })();
 
+/* ── Accessibility layer ─────────────────────────────────────────────
+   Every pop-up (modal, danger confirm, result) becomes a proper dialog: announced by screen readers,
+   keyboard focus moves into it and stays there, Esc closes it, and focus returns to what opened it.
+   Form fields without a visible label are given an accessible name from their placeholder. */
+(function(){
+  var DIALOGS = '.modal-overlay,.danger-modal-overlay,.result-modal-overlay';
+  var opener = null, active = null;
+  function focusables(root){
+    return Array.prototype.filter.call(root.querySelectorAll('button,input,select,textarea,a[href],[tabindex]:not([tabindex="-1"])'),
+      function(e){ return !e.disabled && e.offsetParent !== null; });
+  }
+  function adopt(el){
+    if (el.getAttribute('data-a11y')) return;
+    el.setAttribute('data-a11y', '1');
+    var box = el.firstElementChild || el;
+    box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
+    var h = box.querySelector('h1,h2,h3'); if (h) { if (!h.id) h.id = 'dlgTitle' + Date.now(); box.setAttribute('aria-labelledby', h.id); }
+    if (!active) opener = document.activeElement;
+    active = el;
+    var f = focusables(box); var pref = box.querySelector('input:not([type=checkbox]),select,textarea') || f[0];
+    if (pref && document.activeElement !== pref && !box.contains(document.activeElement)) { try { pref.focus(); } catch(e){} }
+  }
+  function release(){
+    if (active && !document.body.contains(active)) {
+      active = null;
+      var again = document.querySelector(DIALOGS);
+      if (again) { adopt(again); return; }
+      if (opener && document.body.contains(opener)) { try { opener.focus(); } catch(e){} }
+      opener = null;
+    }
+  }
+  function label(root){
+    Array.prototype.forEach.call(root.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea'), function(f){
+      if (f.getAttribute('aria-label') || f.getAttribute('aria-labelledby') || f.title) return;
+      if (f.id && document.querySelector('label[for="' + f.id + '"]')) return;
+      if (f.closest('label')) return;
+      var t = f.getAttribute('placeholder') || (f.previousElementSibling && f.previousElementSibling.tagName === 'LABEL' ? f.previousElementSibling.textContent : '');
+      if (t) f.setAttribute('aria-label', String(t).replace(/\s+/g, ' ').trim());
+    });
+  }
+  new MutationObserver(function(muts){
+    var added = false;
+    muts.forEach(function(m){ if (m.addedNodes.length) added = true; });
+    var d = document.querySelector(DIALOGS); if (d) adopt(d);
+    release();
+    if (added) label(document.body);
+  }).observe(document.body, { childList: true, subtree: true });
+  document.addEventListener('keydown', function(e){
+    if (!active || !document.body.contains(active)) return;
+    var box = active.firstElementChild || active;
+    if (e.key === 'Escape') {
+      var btns = Array.prototype.slice.call(box.querySelectorAll('button'));
+      var cancel = btns.filter(function(b){ return /cancel|close|^no$|^ok$/i.test(b.textContent.trim().replace(/^[^\w]+/, '')) || /danger-cancel|result-close|btn-secondary/.test(b.className); })[0];
+      e.preventDefault(); if (cancel) cancel.click(); else active.remove();
+    } else if (e.key === 'Tab') {
+      var f = focusables(box); if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !box.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || !box.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+    }
+  });
+})();
+
 window.onload = function() {
   document.getElementById('logoutBtn').onclick = function(){ App.logout(); };
   document.getElementById('logoutBtnSide').onclick = function(){ App.toggleNav(false); App.logout(); };

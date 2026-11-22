@@ -46,6 +46,10 @@
   var PUBLIC_READS = { getPublicConfig: 1, needsFirstTimeSetup: 1, getSchoolName: 1, getSchoolCrest: 1 };
   // Reads that are not worth keeping offline (large, admin-only or live-only).
   var NO_CACHE = { generateReportCardsBatch: 1, getDataHealth: 1, getArchiveStatus: 1, getRolePermissions: 1, getAllUsers: 1, getRoleNames: 1 };
+  // Payroll screens contain salaries and bank details. They are NOT kept on the device unless the
+  // school turns it on (cachePayroll: true in config.js).
+  var PAYROLL_READS = { getPayrollSettings: 1, getPayrollStaff: 1, getPayrollRuns: 1, getPayrollRun: 1, getPayrollYearSummary: 1 };
+  if (CFG.cachePayroll !== true) Object.keys(PAYROLL_READS).forEach(function (k) { NO_CACHE[k] = 1; });
   // Calls that must never wait for the outbox to be sent first.
   var NO_FLUSH_FIRST = { loginUser: 1, logoutUser: 1, validateSession: 1, registerFirstAdmin: 1, changePassword: 1, apiPing: 1 };
   // Long-running server jobs (Apps Script allows up to 6 minutes).
@@ -62,17 +66,17 @@
     recordExpense: {
       label: function (p) { return 'Expense · ' + (p.description || '') + ' · ' + money(p.amount); },
       idem: true, result: function () { return { voucherNumber: '' }; },
-      stamp: function (p) { if (!p.date) p.date = today(); }
+      stamp: function (p) { if (!p.date) p.date = today() }
     },
     recordCanteenPayment: {
       label: function (p) { return 'Canteen payment · ' + (p.mode === 'debt' ? 'full debt' : money(p.amount)) + ' · ' + who(p.studentID); },
       idem: true, result: function (p) { return { amount: round2(p.amount), receiptNumber: '', txId: null, summary: '' }; },
-      stamp: function (p) { if (!p.date) p.date = today(); }
+      stamp: function (p) { if (!p.date) p.date = today() }
     },
     recordCanteenExpense: {
       label: function (p) { return 'Canteen expense · ' + (p.description || '') + ' · ' + money(p.amount); },
       idem: true, result: function () { return { voucherNumber: '' }; },
-      stamp: function (p) { if (!p.date) p.date = today(); }
+      stamp: function (p) { if (!p.date) p.date = today() }
     },
     markAttendanceBatch: {
       label: function (p) { return 'Attendance · ' + niceDate(p.date) + ' · ' + count(p.records, 'student'); }
@@ -217,6 +221,17 @@
     return api;
   })();
   var ready = store.ready();
+  // The term/year the school is in, as last reported by the server. Things saved offline are
+  // stamped with it, so after a term change they still land in the term they were made in.
+  var period = null;
+  function notePeriod(cfg) {
+    var t = cfg && parseInt(cfg.currentTerm, 10), y = cfg && cfg.currentAcademicYear;
+    if (!(t >= 1 && t <= 3) || !y) return;
+    period = { term: t, year: String(y) };
+    ready.then(function () { return store.put('meta', { key: 'period', value: period }); }).catch(function () {});
+  }
+  ready.then(function () { return store.get('meta', 'period'); }).then(function (row) { if (row && row.value && !period) period = row.value; }).catch(function () {});
+  function stampPeriod(p) { if (period && !p.term) { p.term = period.term; p.academicYear = period.year; } }
 
   /* -------------------------------------------------------------- session */
   var session = null;            // { email, token }
@@ -375,7 +390,7 @@
   var MAX_CACHE_ENTRIES = Math.max(100, Number(CFG.maxSavedScreens) || 600);
   function purgeOldCache() {
     var limit = Date.now() - CACHE_DAYS * 86400000;
-    return ready.then(function () { return store.delWhere('cache', function (v) { return !v.savedAt || v.savedAt < limit; }); })
+    return ready.then(function () { return store.delWhere('cache', function (v) { return !v.savedAt || v.savedAt < limit || !!NO_CACHE[v.fn]; }); })
       .then(function () { return store.all('cache'); })
       .then(function (all) {
         if (!all || all.length <= MAX_CACHE_ENTRIES) return;
@@ -478,7 +493,10 @@
   }
   function enqueue(fn, params) {
     if (!session) return Promise.reject(offlineError(fn));
-    var rule = QUEUE[fn], clean = withoutToken(params);
+    var rule = QUEUE[fn];
+    // Only an entry saved OFFLINE carries the period it was made in; online, the server uses its own.
+    if (fn !== 'recordFeePayment') stampPeriod(params);
+    var clean = withoutToken(params);
     var item = { id: uid(), user: session.email, fn: fn, params: clean, label: rule.label(clean), createdAt: Date.now(),
                  status: 'pending', attempts: 0, lastError: '', lastTriedAt: null };
     return ready.then(function () { return saveItem(item); }).then(function () {
@@ -614,6 +632,7 @@
       return remote(fn, params, timeoutFor(fn));
     }).then(function (result) {
       if (fn !== 'logoutUser') markOnline();
+      if (fn === 'getSchoolConfig') notePeriod(result);
       if (read) { cachePut(fn, params, result); return overlay(fn, params, clone(result)); }
       return result;
     }, function (err) {

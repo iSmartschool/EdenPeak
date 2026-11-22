@@ -277,3 +277,7 @@ label{color:var(--text-secondary);font-size:13px;}
 }
 @media screen and (max-width:900px){ #printContent > *{zoom:var(--fit,1);} }
 @keyframes sheetUp{from{transform:translateY(40px);opacity:.4;}to{transform:none;opacity:1;}}
+
+/* Keyboard focus is always visible; motion is switched off for people who ask for it. */
+button:focus-visible,a:focus-visible,[tabindex]:focus-visible,select:focus-visible,input[type=checkbox]:focus-visible,input[type=radio]:focus-visible{outline:3px solid var(--green);outline-offset:2px;}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important;}}
