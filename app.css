@@ -338,6 +338,17 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,select:focus-visib
 .auth-help{margin-top:22px;font-size:13px;color:var(--text-muted);text-align:center;}
 #loginOverlay .install-btn{margin-top:14px;}
 #setupForm .auth-head{margin-bottom:0;}
+@media (min-width:901px){
+  .auth-brand-inner{max-width:600px;}
+  .auth-crest{width:clamp(150px,32vh,380px);height:clamp(150px,32vh,380px);max-width:60vw;border-radius:clamp(30px,6vh,64px);font-size:clamp(72px,15vh,180px);box-shadow:0 18px 50px rgba(0,0,0,.35);}
+  .auth-crest img{padding:clamp(10px,2vh,22px);}
+  .auth-product{margin-top:clamp(24px,4.5vh,40px);}
+  .auth-school{font-size:clamp(32px,3.6vw,48px);}
+}
+@media (min-width:901px) and (max-height:720px){
+  .auth-crest{width:26vh;height:26vh;}
+  .auth-product{margin-top:20px;}
+}
 @media (max-width:900px){
   .auth{grid-template-columns:1fr;grid-template-rows:auto 1fr;}
   .auth-brand{padding:28px 24px 30px;flex-direction:row;align-items:center;}
