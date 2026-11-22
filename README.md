@@ -177,6 +177,11 @@ deployment (step 1.4) — the URL stays the same.
   never count a term's fees twice. It tells you when no fee items were set up for the new term. Promotion refuses
   to run again at the start of a year if it was already done in Third Term.
 
+- **Sign-in uses a username**, not an e-mail: 3–30 letters, numbers, dots, dashes or underscores (for example
+  `kofi.mensah`), not case-sensitive. Accounts created earlier with an e-mail address keep working: they sign in with
+  that address. The sign-in screen has a two-panel layout (brand panel plus form; compact on phones), show/hide
+  password, Caps Lock warning, and works in light and dark mode.
+
 ### Known limits
 
 - Things entered offline (expenses, scores, conduct, attendance, canteen) are stamped with the term the

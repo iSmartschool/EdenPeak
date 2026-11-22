@@ -25,26 +25,63 @@
 <noscript><div class="noscript">iSmartSchool needs JavaScript. Please enable it in your browser settings.</div></noscript>
 <div id="loginOverlay">
   <button type="button" class="login-theme theme-btn" aria-label="Switch light or dark mode" title="Switch light / dark mode">🌙</button>
-  <div class="login-box">
-    <div id="loginLogo" style="margin-bottom:18px;font-size:64px;">🏫</div>
-    <h2 style="color:var(--green);margin-bottom:5px;font-weight:700;">iSmartSchool System</h2>
-    <p id="loginSubtitle" style="color:var(--text-muted);margin-bottom:25px;font-size:14px;">School Management System</p>
-    <div id="setupForm"></div>
-    <div id="loginForm">
-      <h3 style="color:var(--text-primary);margin-bottom:20px;">Login</h3>
-      <input id="loginEmail" class="form-control" type="email" placeholder="Email Address" aria-label="Email address" autocomplete="username">
-      <input id="loginPassword" class="form-control" type="password" placeholder="Password" aria-label="Password" style="margin-top:8px;" autocomplete="current-password">
-      <label class="remember-row" for="loginRemember">
-        <input type="checkbox" id="loginRemember">
-        <span>Keep me signed in on this device<small>Needed to open the app offline. Leave unticked on a shared computer.</small></span>
-      </label>
-      <button class="btn" id="loginBtn" style="width:100%;margin-top:15px;">🔐 Sign In</button>
-      <p id="loginError" style="color:var(--red);margin-top:10px;font-size:13px;" role="alert"></p>
-      <p id="loginNet" class="login-net hidden" role="status"></p>
-      <button type="button" class="btn btn-secondary install-btn hidden" id="installBtnLogin">⬇️ Install app</button>
-      <p style="font-size:11px;color:var(--text-muted);margin-top:16px;">© iSmartSchool 2026. All Rights Reserved!</p>
-    </div>
-  </div>
+  <main class="auth">
+    <section class="auth-brand" aria-label="About this system">
+      <div class="auth-brand-inner">
+        <div class="auth-crest" id="loginLogo" aria-hidden="true">🏫</div>
+        <p class="auth-product">iSmartSchool</p>
+        <h1 id="loginSubtitle" class="auth-school">School Management System</h1>
+        <p class="auth-tag">Everything your school runs on, in one secure place.</p>
+        <ul class="auth-points">
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18v10H3zM3 10h18M7 15h3"/></svg><span><b>Fees &amp; receipts</b> collected, tracked and reconciled</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16M8 16v-5m4 5V8m4 8v-3"/></svg><span><b>Results &amp; report cards</b> ready for every class</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12a10 10 0 0 1 14 0M8 15a6 6 0 0 1 8 0M12 19h.01"/></svg><span><b>Works offline</b> and catches up when you reconnect</span></li>
+        </ul>
+      </div>
+      <p class="auth-brand-foot">© iSmartSchool 2026. All rights reserved.</p>
+    </section>
+    <section class="auth-panel">
+      <div class="auth-card">
+        <div id="setupForm"></div>
+        <div id="loginForm">
+          <header class="auth-head">
+            <h2>Welcome back</h2>
+            <p>Sign in with your username to continue.</p>
+          </header>
+          <form id="loginFormEl" novalidate onsubmit="return false">
+            <div class="field">
+              <label for="loginUsername">Username</label>
+              <div class="input-wrap">
+                <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+                <input id="loginUsername" type="text" inputmode="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="80" placeholder="e.g. kofi.mensah" aria-describedby="loginError">
+              </div>
+            </div>
+            <div class="field">
+              <label for="loginPassword">Password</label>
+              <div class="input-wrap">
+                <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+                <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter your password" aria-describedby="loginCaps loginError">
+                <button type="button" class="reveal" id="loginReveal" aria-label="Show password" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <p class="caps hidden" id="loginCaps" role="status">Caps Lock is on</p>
+            </div>
+            <label class="remember-row switch" for="loginRemember">
+              <input type="checkbox" id="loginRemember">
+              <span class="track" aria-hidden="true"></span>
+              <span class="txt">Keep me signed in on this device<small>Needed to open the app offline. Leave off on a shared computer.</small></span>
+            </label>
+            <button class="auth-btn" id="loginBtn" type="submit"><span class="lbl">Sign in</span><span class="spin" aria-hidden="true"></span></button>
+          </form>
+          <p id="loginError" class="auth-error" role="alert"></p>
+          <p id="loginNet" class="login-net hidden" role="status"></p>
+          <button type="button" class="btn btn-secondary install-btn hidden" id="installBtnLogin">⬇️ Install app</button>
+          <p class="auth-help">Forgot your password or username? Ask your school administrator.</p>
+        </div>
+      </div>
+    </section>
+  </main>
 </div>
 <div class="app-layout" id="appLayout">
   <div class="mobile-topbar">

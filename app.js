@@ -454,7 +454,7 @@ var App = {
     var s = this;
     s.call('getPublicConfig', {}, 'publicConfig').then(function(r) {
       if (r && r.schoolName) document.getElementById('loginSubtitle').textContent = r.schoolName;
-      if (r && r.schoolCrest) { s._cache.crest = r.schoolCrest; document.getElementById('loginLogo').innerHTML = '<img src="'+s.escapeHtml(r.schoolCrest)+'" style="max-width:120px;max-height:120px;">'; }
+      if (r && r.schoolCrest) { s._cache.crest = r.schoolCrest; document.getElementById('loginLogo').innerHTML = '<img alt="" src="'+s.escapeHtml(r.schoolCrest)+'">'; }
       if (r && r.needsSetup) s.showSetup(); else s.showLogin();
     }).catch(function(e){
       document.getElementById('loginError').textContent = (e && (e.offline || e.code === 'NOT_CONFIGURED')) ? e.message : 'Cannot connect to the server.';
@@ -462,12 +462,18 @@ var App = {
     });
   },
   showSetup: function() {
+    var f = function(id, label, type, ph, extra) {
+      return '<div class="field"><label for="'+id+'">'+label+'</label><div class="input-wrap"><input id="'+id+'" type="'+type+'" placeholder="'+ph+'" '+(extra||'')+'></div></div>';
+    };
     document.getElementById('setupForm').innerHTML =
-      '<h2 style="color:var(--gold)">Create Admin</h2>' +
-      '<input id="suName" class="form-control" placeholder="Full Name">' +
-      '<input id="suEmail" class="form-control" type="email" placeholder="Email">' +
-      '<input id="suPass" class="form-control" type="password" placeholder="Password (min 8 characters)">' +
-      '<button class="btn" id="setupBtn" style="width:100%">Create Account</button>';
+      '<header class="auth-head"><h2>Create the administrator</h2><p>This first account controls the whole system. You can add other users afterwards.</p></header>' +
+      '<form class="field-set" id="setupFormEl" novalidate onsubmit="return false">' +
+        f('suName','Full name','text','e.g. Kofi Mensah','autocomplete="name" maxlength="80"') +
+        f('suEmail','Username','text','e.g. kofi.admin','autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="80"') +
+        '<p class="caps" style="color:var(--text-muted);font-weight:400;margin:-8px 0 16px;">3–30 letters, numbers, dots, dashes or underscores.</p>' +
+        f('suPass','Password','password','At least 8 characters','autocomplete="new-password"') +
+        '<button class="auth-btn" id="setupBtn" type="submit"><span class="lbl">Create account</span><span class="spin" aria-hidden="true"></span></button>' +
+      '</form>';
     document.getElementById('loginForm').style.display = 'none';
     document.getElementById('setupBtn').onclick = function() {
       var b = this;
@@ -481,10 +487,10 @@ var App = {
     document.getElementById('loginForm').style.display = 'block';
     var submit = function() {
       App.safeSubmit(document.getElementById('loginBtn'), function() {
-        var email=document.getElementById('loginEmail').value.trim(), pass=document.getElementById('loginPassword').value, err=document.getElementById('loginError');
+        var username=document.getElementById('loginUsername').value.trim(), pass=document.getElementById('loginPassword').value, err=document.getElementById('loginError');
         err.textContent='';
-        if (!email||!pass) { err.textContent='Please fill all fields.'; return Promise.resolve(); }
-        return App.call('loginUser',{email:email,password:pass}).then(function(r){
+        if (!username||!pass) { err.textContent='Enter your username and password.'; (username?document.getElementById('loginPassword'):document.getElementById('loginUsername')).focus(); return Promise.resolve(); }
+        return App.call('loginUser',{email:username,password:pass}).then(function(r){
           if (r.success) {
             App.token = r.token;
             App._remember = !!(document.getElementById('loginRemember') || {}).checked;
@@ -495,11 +501,17 @@ var App = {
         }).catch(function(ex){ err.textContent='Error: '+ex.message; });
       });
     };
+    // Pressing Enter in either field submits the form, which clicks this button.
     document.getElementById('loginBtn').onclick = submit;
-    // NEW: Enter key submits the login form.
-    ['loginEmail','loginPassword'].forEach(function(id){
-      document.getElementById(id).onkeydown = function(e){ if (e.key === 'Enter') submit(); };
-    });
+    var pw = document.getElementById('loginPassword'), rv = document.getElementById('loginReveal'), caps = document.getElementById('loginCaps');
+    rv.onclick = function() {
+      var show = pw.type === 'password';
+      pw.type = show ? 'text' : 'password';
+      rv.setAttribute('aria-pressed', show ? 'true' : 'false'); rv.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      pw.focus();
+    };
+    var capsCheck = function(e) { if (e.getModifierState) caps.classList.toggle('hidden', !e.getModifierState('CapsLock')); };
+    pw.onkeydown = capsCheck; pw.onkeyup = capsCheck; pw.onblur = function() { caps.classList.add('hidden'); };
   },
   hideLogin: function() { document.getElementById('loginOverlay').style.display='none'; document.getElementById('appLayout').classList.add('active'); },
 
@@ -529,7 +541,7 @@ var App = {
     var bn=document.getElementById('bottomNav'); bn.classList.remove('show'); bn.innerHTML='';
     document.getElementById('appLayout').classList.remove('active');
     document.getElementById('loginOverlay').style.display='flex';
-    document.getElementById('loginEmail').value=''; document.getElementById('loginPassword').value=''; document.getElementById('loginError').textContent='';
+    document.getElementById('loginUsername').value=''; document.getElementById('loginPassword').value=''; document.getElementById('loginError').textContent='';
     this.showLogin();
   },
 
@@ -2280,9 +2292,9 @@ var App = {
       var roleOpts=function(sel){ return roleNames.map(function(r){ return '<option value="'+s.escapeHtml(r)+'"'+(r===sel?' selected':'')+'>'+s.escapeHtml(r)+'</option>'; }).join(''); };
       c.innerHTML='<div id="userTable"></div>'+
         '<h4 style="margin-top:20px;">Add User</h4><div style="display:flex;gap:10px;flex-wrap:wrap;">'+
-          '<input id="nuEmail" class="form-control" type="email" placeholder="Email" style="flex:2;min-width:180px;">'+
+          '<input id="nuEmail" class="form-control" type="text" placeholder="Username (e.g. kofi.mensah)" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="80" style="flex:2;min-width:180px;">'+
           '<input id="nuName" class="form-control" placeholder="Name" style="flex:2;min-width:150px;">'+
-          '<input id="nuPass" class="form-control" type="password" placeholder="Initial password (min 6)" style="flex:2;min-width:150px;">'+
+          '<input id="nuPass" class="form-control" type="password" placeholder="Initial password (min 8)" style="flex:2;min-width:150px;">'+
           '<select id="nuRole" class="form-control" style="flex:1;min-width:140px;">'+roleOpts(roleNames[1]||'Admin')+'</select>'+
           '<button class="btn" id="addUserBtn" style="margin-top:5px;">Add</button></div>'+
         '<p style="color:var(--text-muted);font-size:12px;margin-top:6px;">Share the initial password privately and ask the user to change it via 🔑 Change Password. Create or change roles under <b>Roles &amp; Permissions</b>.</p>';
@@ -2308,10 +2320,10 @@ var App = {
         }
         return tr;
       });
-      document.getElementById('userTable').appendChild(s._buildTable(['Name','Email','Role','Status','Actions'],rows));
+      document.getElementById('userTable').appendChild(s._buildTable(['Name','Username','Role','Status','Actions'],rows));
       document.getElementById('addUserBtn').onclick=function(){
         var email=document.getElementById('nuEmail').value.trim(), name=document.getElementById('nuName').value.trim(), pass=document.getElementById('nuPass').value;
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { s.modal.alert('Please enter a valid email.'); return; }
+        if (!/^[A-Za-z0-9][A-Za-z0-9._-]{2,29}$/.test(email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { s.modal.alert('Please enter a valid username: 3–30 letters, numbers, dots, dashes or underscores.'); return; }
         if (!name) { s.modal.alert('Please enter a name.'); return; }
         if (pass.length<8) { s.modal.alert('Initial password must be at least 8 characters.'); return; }
         s.safeSubmit(this, function(){
