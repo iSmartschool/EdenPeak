@@ -467,7 +467,7 @@ var App = {
     };
     document.getElementById('setupForm').innerHTML =
       '<header class="auth-head"><h2>Create the administrator</h2><p>This first account controls the whole system. You can add other users afterwards.</p></header>' +
-      '<form class="field-set" id="setupFormEl" novalidate onsubmit="return false">' +
+      '<form class="field-set" id="setupFormEl" novalidate>' +
         f('suName','Full name','text','e.g. Kofi Mensah','autocomplete="name" maxlength="80"') +
         f('suEmail','Username','text','e.g. kofi.admin','autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="80"') +
         '<p class="caps" style="color:var(--text-muted);font-weight:400;margin:-8px 0 16px;">3–30 letters, numbers, dots, dashes or underscores.</p>' +
@@ -490,7 +490,8 @@ var App = {
         var username=document.getElementById('loginUsername').value.trim(), pass=document.getElementById('loginPassword').value, err=document.getElementById('loginError');
         err.textContent='';
         if (!username||!pass) { err.textContent='Enter your username and password.'; (username?document.getElementById('loginPassword'):document.getElementById('loginUsername')).focus(); return Promise.resolve(); }
-        return App.call('loginUser',{email:username,password:pass}).then(function(r){
+        var remember=!!(document.getElementById('loginRemember') || {}).checked;
+        return App.call('loginUser',{email:username,password:pass,remember:remember}).then(function(r){
           if (r.success) {
             App.token = r.token;
             App._remember = !!(document.getElementById('loginRemember') || {}).checked;
@@ -543,6 +544,27 @@ var App = {
     document.getElementById('loginOverlay').style.display='flex';
     document.getElementById('loginUsername').value=''; document.getElementById('loginPassword').value=''; document.getElementById('loginError').textContent='';
     this.showLogin();
+  },
+
+  /* ── Automatic sign-out on shared computers ──
+     A session WITHOUT "Keep me signed in" (shared computer) ends after
+     idleLockMinutes (config.js, default 30) without any key press, click or
+     touch. Remembered sessions on a person's own device are not locked, so
+     the app still opens offline. Unsent offline changes stay on the device. */
+  startIdleLock: function(){
+    var s=this, mins=Number((window.ISS_CONFIG||{}).idleLockMinutes);
+    if (mins===0) return;
+    mins = mins>0 ? Math.max(5, mins) : 30;
+    var last=Date.now(), bump=function(){ last=Date.now(); };
+    var check=function(){
+      if (!s.user || s._remember || Date.now()-last < mins*60000) return;
+      last=Date.now();
+      s._logoutConfirmed=true; try { s.logout(); } finally { s._logoutConfirmed=false; }
+      s.modal.alert('You were signed out after '+mins+' minutes without activity. Please sign in again.');
+    };
+    ['pointerdown','keydown','touchstart','wheel'].forEach(function(ev){ document.addEventListener(ev, bump, {passive:true, capture:true}); });
+    document.addEventListener('visibilitychange', function(){ if (document.visibilityState==='visible') check(); });
+    setInterval(check, 30000);
   },
 
   /* ── Light / dark mode (remembered on this device) ── */
@@ -1240,7 +1262,7 @@ var App = {
       det.appendChild(strip);
       var rows=payments.map(function(p){
         var tr=document.createElement('tr');
-        [s.niceDate(p.date),(s.TERM_NAMES[p.term]||('T'+p.term))+' '+(p.academicYear||''),p.feeType||'General',s.money(p.amount),p.method||'',p.receipt||''].forEach(function(v,ci){
+        [s.niceDate(p.date),p.pending?'⏳ Waiting to send':(s.TERM_NAMES[p.term]||('T'+p.term))+' '+(p.academicYear||''),p.feeType||'General',s.money(p.amount),p.method||'',p.receipt||''].forEach(function(v,ci){
           var td=tr.insertCell(); td.textContent=v;
           if(ci===3){ td.style.color=p.reversed?'var(--text-muted)':'var(--green)'; td.style.fontWeight='700'; if (p.reversed) td.style.textDecoration='line-through'; }
           if(ci===5 && p.reversed){ var b=document.createElement('span'); b.className='payment-status not-paid'; b.style.marginLeft='6px'; b.textContent='Reversed'; td.appendChild(b); }
@@ -1657,9 +1679,9 @@ var App = {
       se.innerHTML='';
       subs.forEach(function(sub, i){
         var ex=existing[sub], div=document.createElement('div'); div.className='subject-entry';
-        div.innerHTML='<strong>📖 '+s.escapeHtml(sub)+(ex?' <span style="font-size:11px;color:var(--green);font-weight:400;">(saved: total '+ex.total+')</span>':'')+'</strong><div class="score-inputs">'+
-          '<div style="flex:1;"><label style="font-size:11px;color:var(--text-muted);">Class Score (out of 100)</label><input class="form-control class-score" data-idx="'+i+'" type="number" step="0.5" min="0" max="100" value="'+(ex?ex.rawClass:'')+'" placeholder="0"></div>'+
-          '<div style="flex:1;"><label style="font-size:11px;color:var(--text-muted);">Exam Score (out of 100)</label><input class="form-control exam-score" data-idx="'+i+'" type="number" step="0.5" min="0" max="100" value="'+(ex?ex.rawExam:'')+'" placeholder="0"></div></div>';
+        div.innerHTML='<strong>📖 '+s.escapeHtml(sub)+(ex?' <span style="font-size:11px;color:var(--green);font-weight:400;">(saved: total '+s.escapeHtml(ex.total)+')</span>':'')+'</strong><div class="score-inputs">'+
+          '<div style="flex:1;"><label style="font-size:11px;color:var(--text-muted);">Class Score (out of 100)</label><input class="form-control class-score" data-idx="'+i+'" type="number" step="0.5" min="0" max="100" value="'+s.escapeHtml(ex?ex.rawClass:'')+'" placeholder="0"></div>'+
+          '<div style="flex:1;"><label style="font-size:11px;color:var(--text-muted);">Exam Score (out of 100)</label><input class="form-control exam-score" data-idx="'+i+'" type="number" step="0.5" min="0" max="100" value="'+s.escapeHtml(ex?ex.rawExam:'')+'" placeholder="0"></div></div>';
         se.appendChild(div);
       });
       se.querySelectorAll('.class-score,.exam-score').forEach(function(inp){ inp.onchange=function(){ s.validateScore(inp,100); }; });
@@ -2627,7 +2649,7 @@ var App = {
       var box=document.getElementById(boxId); box.innerHTML='';
       arr.forEach(function(it,i){
         var row=document.createElement('div'); row.style.cssText='display:flex;gap:6px;align-items:center;';
-        row.innerHTML='<input class="form-control" placeholder="'+ph+'" maxlength="60" value="'+E(it.name)+'" style="flex:2;"><input class="form-control" type="number" min="0" step="0.01" placeholder="GH₵" value="'+(it.amount===''||it.amount===undefined?'':it.amount)+'" style="flex:1;">';
+        row.innerHTML='<input class="form-control" placeholder="'+ph+'" maxlength="60" value="'+E(it.name)+'" style="flex:2;"><input class="form-control" type="number" min="0" step="0.01" placeholder="GH₵" value="'+E(it.amount===''||it.amount===undefined?'':it.amount)+'" style="flex:1;">';
         var ins=row.querySelectorAll('input');
         ins[0].oninput=function(){ it.name=this.value; };
         ins[1].oninput=function(){ it.amount=this.value===''?'':parseFloat(this.value); calc(); };
@@ -2865,9 +2887,10 @@ var App = {
     Promise.all([s.getClasses(), s.call('getCanteenSettings')]).then(function(res){
       var cl=res[0], cfg=res[1]; s._cntCfg=cfg;
       var tabs=[['register','🍽️ Daily Register'],['pay','💵 Receive Payment'],['debtors','📒 Debtors'],['expenses','🧾 Expenses'],['reports','📊 Reports']];
-      if (s.isAdmin()) tabs.push(['settings','⚙️ Settings']);
+      var canSet=s.can('canteen.settings');
+      if (canSet) tabs.push(['settings','⚙️ Settings']);
       var noRate=!(cfg.defaultRate>0) && !Object.keys(cfg.classRates||{}).some(function(k){ return cfg.classRates[k]>0; });
-      el.innerHTML=(noRate?'<div style="background:var(--gold-bg);color:var(--gold);padding:12px 16px;border-radius:12px;margin-bottom:16px;">⚠️ No daily canteen rate is set yet. '+(s.isAdmin()?'Open the <b>Settings</b> tab and enter the daily rate first.':'Ask an Admin to set the daily rate.')+'</div>':'')+
+      el.innerHTML=(noRate?'<div style="background:var(--gold-bg);color:var(--gold);padding:12px 16px;border-radius:12px;margin-bottom:16px;">⚠️ No daily canteen rate is set yet. '+(canSet?'Open the <b>Settings</b> tab and enter the daily rate first.':'Ask an Admin (or someone allowed to change canteen settings) to set the daily rate.')+'</div>':'')+
         '<div class="tab-bar">'+tabs.map(function(t,i){ return '<button class="btn tab-btn'+(i===0?' active':'')+'" data-ctab="'+t[0]+'">'+t[1]+'</button>'; }).join('')+'</div>'+
         '<div id="cntContent"></div>';
       var show=function(t, arg){
@@ -2878,7 +2901,7 @@ var App = {
       };
       s._cntShow=show;
       el.querySelectorAll('[data-ctab]').forEach(function(b){ b.onclick=function(){ show(b.dataset.ctab); }; });
-      show(noRate && s.isAdmin() ? 'settings' : 'register');
+      show(noRate && canSet ? 'settings' : 'register');
     }).catch(function(e){ el.innerHTML=s.errHtml(e); });
   },
   // "GH₵23.00 credit (4 days + GH₵3.00)" / "Owes GH₵10.00 (2 days)"
@@ -3080,19 +3103,30 @@ var App = {
         });
       };
       var hist=document.getElementById('cntHistory');
-      if (!acc.transactions.length) { hist.innerHTML='<p style="color:var(--text-muted);">No canteen activity yet.</p>'; return; }
+      if (acc.derived) hist.insertAdjacentHTML('beforebegin','<p style="color:var(--gold);font-size:12px;margin:-4px 0 8px;">Offline: the balance comes from the list saved on this device; the full history appears once you are back online.</p>');
+      if (!acc.transactions.length) { hist.innerHTML='<p style="color:var(--text-muted);">'+(acc.derived?'History not saved on this device.':'No canteen activity yet.')+'</p>'; return; }
+      var canFix=s.can('canteen.reverse');
       var rows=acc.transactions.map(function(t){
-        var tr=document.createElement('tr'), pay=t.type==='PAYMENT', bf=t.type==='OPENING';
+        var tr=document.createElement('tr'), pay=t.type==='PAYMENT', bf=t.type==='OPENING', rev=t.type==='REVERSAL', meal=t.type==='MEAL';
         var plus = pay || (bf && t.amount>=0);
-        [s.niceDate(t.date), bf?'Brought forward':(pay?'Payment':'Meal'), (plus?'+':'−')+s.money(Math.abs(t.amount)), t.method||'', t.receipt||'', t.notes||''].forEach(function(v,ci){
-          var td=tr.insertCell(); td.textContent=v; if(ci===2){ td.style.color=plus?'var(--green)':'var(--red)'; td.style.fontWeight='700'; }
+        var typeTxt = bf?'Brought forward':rev?'Reversal':pay?'Payment':'Meal';
+        [s.niceDate(t.date), typeTxt, (rev?'−':plus?'+':'−')+s.money(Math.abs(t.amount)), t.method||'', t.receipt||'', t.notes||''].forEach(function(v,ci){
+          var td=tr.insertCell(); td.textContent=v;
+          if(ci===2){ td.style.color=t.reversed?'var(--text-muted)':(plus?'var(--green)':'var(--red)'); td.style.fontWeight='700'; if (t.reversed) td.style.textDecoration='line-through'; }
+          if(ci===1 && t.reversed){ var b=document.createElement('span'); b.className='payment-status not-paid'; b.style.marginLeft='6px'; b.textContent='Reversed'; td.appendChild(b); }
         });
-        var td=tr.insertCell();
+        var td=tr.insertCell(); td.style.whiteSpace='nowrap';
+        if (t.pending || !t.txId) { var w=document.createElement('span'); w.style.cssText='font-size:11px;color:var(--gold);'; w.textContent='⏳ waiting to send'; td.appendChild(w); return tr; }
         if (pay && t.receipt) td.appendChild(s._btn('🖨️','',function(){ s._cntPrintReceipt(t.txId); }));
-        if (s.can('canteen.void') && !bf) td.appendChild(s._btn('Void','btn-danger',function(){
-          s.modal.confirm('Remove this '+(pay?'payment of ':'meal charge of ')+s.escapeHtml(s.money(t.amount))+' on '+s.escapeHtml(s.niceDate(t.date))+'? This is logged.').then(function(ok){
+        if (canFix && pay && !t.reversed && !t.locked) {
+          if (t.fromRegister) { var hint=document.createElement('span'); hint.style.cssText='font-size:11px;color:var(--text-muted);margin-left:6px;'; hint.textContent='correct on the register'; hint.title='Paid at feeding: open the Daily Register for '+s.niceDate(t.date)+' to change it.'; td.appendChild(hint); }
+          else td.appendChild(s._btn('↩ Reverse','btn-danger',function(){ s._cntReverse(t, sid); },'margin-left:4px;'));
+        }
+        if (canFix && meal && !t.locked) td.appendChild(s._btn('Remove','btn-danger',function(){
+          s.modal.confirm('Remove the meal charge of '+s.escapeHtml(s.money(t.amount))+' on '+s.escapeHtml(s.niceDate(t.date))+'? The amount goes back to the student\'s account (the same as marking them Absent on the register that day). This is logged.').then(function(ok){
             if (!ok) return;
-            s.call('voidCanteenTransaction',{txId:t.txId}).then(function(r){ if (r.success) s._cntLoadAccount(sid); else s.modal.alert('❌ '+r.message); });
+            s.call('voidCanteenTransaction',{txId:t.txId}).then(function(r){ if (r.success) s.modal.alert('✅ '+r.message).then(function(){ s._cntLoadAccount(sid); }); else s.modal.alert('❌ '+r.message); })
+              .catch(function(e){ s.modal.alert('❌ '+e.message); });
           });
         },'margin-left:4px;'));
         return tr;
@@ -3100,13 +3134,33 @@ var App = {
       hist.appendChild(s._buildTable(['Date','Type','Amount','Method','Receipt','Notes',''],rows));
     }).catch(function(e){ box.innerHTML=s.errHtml(e); });
   },
+  // Reverse a canteen payment entered by mistake (reason required). The receipt
+  // stays on record marked Reversed; the right amount can then be recorded again.
+  _cntReverse: function(t, sid){
+    var s=this, E=function(v){ return s.escapeHtml(v); };
+    s.modal.show('Reverse canteen payment '+E(t.receipt||''),
+      'Reverse <b>'+E(s.money(t.amount))+'</b> received on '+E(s.niceDate(t.date))+'? The receipt stays on record marked <b>Reversed</b> and the amount is taken off the student\'s canteen balance and off the canteen\'s cash for today.'+
+      '<p style="font-size:12px;color:var(--text-muted);margin-top:8px;">Wrong amount or wrong student? Reverse it here, then record the correct payment.</p>'+
+      '<textarea id="cntRevReason" class="form-control" rows="2" placeholder="Reason (required), e.g. entered for the wrong student" style="margin-top:6px;"></textarea><div id="cntRevErr" style="color:var(--red);font-size:13px;"></div>',
+      [{text:'Cancel',cls:'btn-secondary'},{text:'↩ Reverse',cls:'btn-danger',cb:function(){
+        var reason=document.getElementById('cntRevReason').value.trim(), err=document.getElementById('cntRevErr'), btn=document.getElementById('mb1');
+        if (!reason) { err.textContent='Please give a reason.'; return false; }
+        if (btn && btn.disabled) return false;
+        if (btn) btn.disabled=true; err.textContent='Reversing…';
+        s.call('reverseCanteenPayment',{txId:t.txId, reason:reason}).then(function(r){
+          if (r.success) { s.modal.close(); s.modal.alert('✅ '+r.message).then(function(){ s._cntLoadAccount(sid); }); }
+          else { err.textContent='❌ '+r.message; if (btn) btn.disabled=false; }
+        }).catch(function(e){ err.textContent='❌ '+e.message; if (btn) btn.disabled=false; });
+        return false;
+      }}]);
+  },
   _cntPrintReceipt: function(txId){
     var s=this;
     s.call('getCanteenReceipt',{txId:txId}).then(function(r){
       if (!r) { s.modal.alert('Receipt not found.'); return; }
       var bal=parseFloat(r.balanceNow)||0;
       s._showReceipt(s._receiptHTML({
-        title:'CANTEEN RECEIPT', number:r.receipt, date:r.date,
+        title:r.reversed?'CANTEEN RECEIPT — REVERSED':'CANTEEN RECEIPT', number:r.receipt, date:r.date,
         school:{ name:r.schoolName, motto:r.schoolMotto, address:r.schoolAddress, phone:r.schoolPhone, email:r.schoolEmail, crest:r.schoolCrest },
         payer:[['Student',r.studentName],['Student ID',r.studentID],['Class',r.cls],['Daily rate', r.rate>0?s.money(r.rate):'—']],
         items:[{ desc:'Canteen feeding'+(r.notes?' — '+String(r.notes).split(' — ')[0]:''), amount:r.amount }],
@@ -3114,7 +3168,7 @@ var App = {
         summaryTitle:'Canteen account',
         summary: bal<-0.004 ? [['Balance','Owes '+s.money(-bal),'#b42318']]
                : [['Balance', bal>0.004?s.money(bal)+' credit':'Clear', '#0b5d3b']].concat(bal>0.004&&r.rate>0?[['Covers', s._cntCoverText(bal,r.rate)]]:[]),
-        note:'Thank you. Credited to the student\'s canteen account.'
+        note:r.reversed?('This payment was REVERSED on '+s.niceDate(r.reversedOn)+' and is no longer on the student\'s account. '+(r.reversalNote||'')):'Thank you. Credited to the student\'s canteen account.'
       }));
     }).catch(function(e){ s.modal.alert('Error: '+e.message); });
   },
@@ -3222,7 +3276,7 @@ var App = {
         [s.niceDate(x.date), x.description, x.category, s.money(x.amount), x.voucher].forEach(function(v,ci){ var td=tr.insertCell(); td.textContent=v; if (ci===3) { td.style.color='var(--red)'; td.style.fontWeight='700'; } });
         var td=tr.insertCell();
         td.appendChild(s._btn('Edit','',function(){ form(x); document.getElementById('cxForm').scrollIntoView({behavior:'smooth',block:'start'}); }));
-        if (s.can('canteen.void')) td.appendChild(s._btn('Del','btn-danger',function(){
+        if (s.can('canteen.expenses.delete')) td.appendChild(s._btn('Del','btn-danger',function(){
           s.modal.confirm('Delete <b>'+E(x.description)+'</b> ('+E(s.money(x.amount))+')?').then(function(ok){
             if (!ok) return; s.call('deleteCanteenExpense',{id:x.id}).then(function(r){ if (r.success) load(); else s.modal.alert('❌ '+r.message); });
           });
@@ -3301,7 +3355,7 @@ var App = {
     };
     document.getElementById('cntRepGo').click();
   },
-  /* ── Settings (Admin) ── */
+  /* ── Settings (Admin, or a role with "canteen.settings") ── */
   _cntSettings: function(c, cl){
     var s=this;
     s.call('getCanteenSettings').then(function(cfg){
@@ -3691,6 +3745,7 @@ App.cardifyTables = function(root){
 })();
 
 window.onload = function() {
+  if (window.ISS_FRAMED) return;            // inside another site's frame: see frame-guard.js
   document.getElementById('logoutBtn').onclick = function(){ App.logout(); };
   document.getElementById('logoutBtnSide').onclick = function(){ App.toggleNav(false); App.logout(); };
   document.getElementById('menuBtn').onclick = function(){ App.toggleNav(); };
@@ -3703,5 +3758,8 @@ window.onload = function() {
   try { if (window.matchMedia) matchMedia('(prefers-color-scheme: light)').addEventListener('change', function(e){
     var saved=null; try { saved=localStorage.getItem('iss-theme'); } catch(x){}
     if (saved!=='light' && saved!=='dark') App.setTheme(e.matches?'light':'dark', false); }); } catch(e){}
+  // Forms are handled in script; a browser submit would only reload the page.
+  document.addEventListener('submit', function(e){ e.preventDefault(); }, true);
+  App.startIdleLock();
   App.checkSetup();
 };

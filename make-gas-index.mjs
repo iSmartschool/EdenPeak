@@ -41,7 +41,7 @@ const title = (/<title>([\s\S]*?)<\/title>/i.exec(html) || [0, 'iSmartSchool'])[
 const safe = (js) => js.replace(/<\/script/gi, '<\\/script');   // never end the inline script early
 
 // The Apps Script page has no API URL of its own: google.script.run is used.
-const config = "window.ISS_CONFIG = { apiUrl: '', offlineCacheDays: 30, prefetchEveryMinutes: 10, maxSavedScreens: 300, cachePayroll: false };";
+const config = "window.ISS_CONFIG = { apiUrl: '', offlineCacheDays: 30, prefetchEveryMinutes: 10, maxSavedScreens: 300, cachePayroll: false, slowNetworkSeconds: 8, idleLockMinutes: 30 };";
 
 const out = `<!DOCTYPE html>
 <html lang="en">

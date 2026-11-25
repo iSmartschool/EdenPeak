@@ -68,6 +68,12 @@ const index = readFileSync(join(OUT, 'index.html'), 'utf8');
 for (const [, ref] of index.matchAll(/(?:src|href)="([^"#:]+)"/g)) {
   if (!existsSync(join(OUT, ref.split('?')[0]))) fail('index.html references a missing file: ' + ref);
 }
+// The Content-Security-Policy allows no inline script: an inline <script> or on…= handler
+// would silently not run (and log a CSP error), so the build refuses them.
+if (/<script(?![^>]*\bsrc=)[^>]*>/i.test(index)) fail('index.html contains an inline <script>; move it into a file under assets/js/.');
+if (/\son[a-z]+\s*=\s*["']/i.test(index)) fail('index.html contains an inline event handler (on…="…"); attach it in assets/js/app.js instead.');
+if (!/http-equiv="Content-Security-Policy"/.test(index)) fail('index.html lost its Content-Security-Policy meta tag.');
+if (index.indexOf('assets/js/frame-guard.js') < 0) fail('index.html must load assets/js/frame-guard.js in <head> (clickjacking protection).');
 const manifest = JSON.parse(readFileSync(join(OUT, 'manifest.webmanifest'), 'utf8'));
 for (const icon of manifest.icons) if (!existsSync(join(OUT, icon.src))) fail('manifest icon missing: ' + icon.src);
 if (!existsSync(join(OUT, '.nojekyll'))) writeFileSync(join(OUT, '.nojekyll'), '');

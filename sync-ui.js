@@ -77,7 +77,7 @@
           ? "<b>You're offline.</b> "
           : "<b>The school server can't be reached.</b> ") +
           (st.stale ? 'Showing information saved on this device ' + E(when(st.stale.savedAt)) + '. ' : '') +
-          'Attendance, canteen, payments, expenses, scores and conduct you record are kept on this device and sent automatically when the connection returns.' +
+          'Attendance, canteen, payments, expenses, scores and conduct you record are kept on this device and sent automatically when the connection returns. Balances shown include payments still waiting to be sent.' +
           (st.pending ? ' <button type="button" class="link-btn" data-open-sync>' + st.pending + ' waiting</button>' : '');
         banner.className = 'conn-banner is-offline';
       } else if (problems) {
@@ -189,13 +189,24 @@
   /* -------------------------------------------- offline copy of screens */
   function warm(force) {
     var u = A.user; if (!u) return Promise.resolve(false);
-    var has = function (p) { return A.hasPage(p); }, d = today();
+    // The class list decides some of the screens to save (each class's subjects).
+    var classes = A._cache && A._cache.classes;
+    if (!classes) return A.getClasses().then(function () { return warmJobs(force); }, function () { return warmJobs(force); });
+    return warmJobs(force);
+  }
+  function warmJobs(force) {
+    var u = A.user; if (!u) return Promise.resolve(false);
+    var has = function (p) { return A.hasPage(p); }, d = today(), classes = (A._cache && A._cache.classes) || [];
     var jobs = [['getPublicConfig'], ['getSchoolCrest'], ['getClasses'], ['getAllStudents'], ['getSchoolConfig']];
     if (has('dashboard')) jobs.push(['getDashboardStats']);
     if (has('attendance')) jobs.push(['getAttendanceForDate', { date: d }]);
-    if (has('canteen')) jobs.push(['getCanteenSettings'], ['getCanteenRegister', { date: d, classCode: 'All' }], ['getCanteenBalances', { classCode: 'All' }]);
+    if (has('canteen')) jobs.push(['getCanteenSettings'], ['getCanteenRegister', { date: d, classCode: 'All' }], ['getCanteenBalances', { classCode: 'All' }],
+                                  ['getCanteenExpenses', { startDate: d.slice(0, 8) + '01', endDate: d }]);
     if (has('fees') || has('finances')) jobs.push(['getAllFeeOverview']);
-    if (has('results')) jobs.push(['getConductOptions'], ['getScoreWeights']);
+    if (has('results')) {
+      jobs.push(['getConductOptions'], ['getScoreWeights']);
+      classes.forEach(function (c) { jobs.push(['getGESSubjects', { classCode: c.code }]); });
+    }
     if (has('expenses')) jobs.push(['getExpenses'], ['getExpenseCategories']);
     if (has('payroll') && (window.ISS_CONFIG || {}).cachePayroll === true) jobs.push(['getPayrollSettings'], ['getPayrollStaff']);
     if (has('finances')) jobs.push(['getFinancialSummary']);
@@ -208,6 +219,14 @@
     return st ? st.FullName + ' (' + sid + ')' : '';
   };
   API.on('status', render);
+  // A read took too long, so the copy saved on this device is on screen (the live answer is
+  // still loading and will be used next time). Said at most once a minute.
+  var lastSlowNote = 0;
+  API.on('slow', function (ev) {
+    if (Date.now() - lastSlowNote < 60000) return;
+    lastSlowNote = Date.now();
+    toast('The connection is slow — showing what was saved on this device ' + (ev && ev.savedAt ? when(ev.savedAt) : 'earlier') + '. It updates when the server answers.', 'info', null, 6000, 'slow');
+  });
   API.on('reconnected', function (prev) {
     if (!A.user) return;
     if (prev === 'offline' || prev === 'unreachable') toast('Back online.' + (API.pendingCount() ? ' Sending changes saved on this device…' : ''), 'success', null, 3000, 'conn');

@@ -19,10 +19,10 @@ offline are sent automatically when the connection returns.
 │       ├── js/app.js          ← all screens (your existing app)
 │       ├── js/sync-ui.js      ← status pill, banner, Sync Center
 │       ├── js/pwa.js          ← install button, "Update now"
+│       ├── js/frame-guard.js  ← refuses to run inside another site's frame
 │       ├── icons/  vendor/exceljs.min.js
-├── apps-script/
-│   ├── Api.gs                 ← NEW: JSON API for the Pages app
-│   └── CanteenModule.gs       ← updated (offline payments keep their date)
+├── apps-script/               ← the Apps Script backend (copy into the Apps Script editor)
+│   ├── Code.gs  CanteenModule.gs  PayrollModule.gs  Api.gs  Maintenance.gs
 ├── scripts/build.mjs          ← build: stamps versions, checks files
 ├── scripts/make-gas-index.mjs ← builds the Apps Script Index.html from the files above
 └── .github/workflows/deploy-pages.yml
@@ -35,11 +35,11 @@ offline are sent automatically when the connection returns.
 ### 1. Apps Script backend
 
 1. Open your Apps Script project (Extensions → Apps Script from the Sheet).
-2. **Add** a script file named `Api.gs` and paste `apps-script/Api.gs` into it.
-3. **Replace** the contents of `CanteenModule.gs` with `apps-script/CanteenModule.gs`.
-   (Only `recordCanteenPayment` changed: it accepts the date a payment was
-   taken, so offline payments synced the next day keep the right date.)
-   `Code.gs` and `PayrollModule.gs` do **not** change.
+2. For each file in `apps-script/` (`Code.gs`, `CanteenModule.gs`, `PayrollModule.gs`, `Api.gs`,
+   `Maintenance.gs`): open the file of the same name in the Apps Script editor (add it if it is
+   missing) and **replace its whole contents**. The repository is the master copy of the backend.
+3. Paste the generated `Index.html` (see *Apps Script page generated* below) into the Apps Script
+   `Index.html` file.
 4. **Deploy → Manage deployments** → edit (✏️) your existing web-app deployment
    → **Version: New version** → **Deploy**.
    If you have no deployment yet: **Deploy → New deployment → Web app**.
@@ -76,8 +76,10 @@ The old Apps Script link keeps working; retire it whenever you like.
 |---|---|
 | **Open the app** | From its icon or bookmark, if you ticked **Keep me signed in on this device** when you last signed in. |
 | **See screens** | Any screen opened on this device while online (dashboard, students, classes, today's attendance and canteen register, fee overview, expenses, payroll staff… are refreshed automatically in the background). The banner shows when the copy was saved. |
-| **Record & save** | Attendance · canteen register · canteen payments & expenses · fee payments · expenses · scores · conduct. They wait in the **outbox** and are sent automatically, in order, when the connection returns. |
-| **Not offline** | Signing in for the first time, adding/deleting students, rollover, promotion, user & role admin, reversals, payroll approval, settings. The app says so clearly instead of failing silently. |
+| **Record & save** | Attendance · canteen register · canteen payments & expenses · fee payments · expenses · scores · conduct. They wait in the **outbox** and are sent automatically, in order, when the connection returns. Canteen payments can be taken for **any** student (the account is worked out from the saved balance list). |
+| **See correct balances** | Fee and canteen balances on screen already include payments still waiting in the outbox, marked *waiting to send*, so nobody is asked to pay twice. |
+| **Slow connection** | A screen that takes more than `slowNetworkSeconds` (8) shows the copy saved on this device straight away; the live answer keeps loading and is saved for next time. Right after you save something, screens always wait for the live answer. |
+| **Not offline** | Signing in for the first time, adding/deleting students, rollover, promotion, user & role admin, reversals (fees and canteen), payroll approval, settings. The app says so clearly instead of failing silently. |
 
 - The **status pill** (top right / top bar) shows *Online*, *Offline*,
   *N to send* or *N to review*. Tap it for the **Sync Center**: what is
@@ -131,9 +133,12 @@ deployment (step 1.4) — the URL stays the same.
   signed in* is ticked. GitHub Pages cannot send custom HTTP headers, so
   framing protection (`frame-ancestors`) is not available there; put a CDN
   such as Cloudflare in front of a custom domain if you need it.
-- **Sessions** last `TOKEN_EXPIRY_HOURS` (24 h in `Code.gs`). A device opened
-  offline uses the saved profile and re-checks it with the server as soon as
-  it is back online.
+- **Sessions** end after `TOKEN_EXPIRY_HOURS` (24 h) without use, or
+  `REMEMBER_EXPIRY_HOURS` (7 days) on a device where *Keep me signed in* was
+  ticked, so a phone used offline over a weekend can still send its changes on
+  Monday. A session in use renews itself, but every session ends
+  `SESSION_MAX_DAYS` (30) after sign-in. A device opened offline uses the saved
+  profile and re-checks it with the server as soon as it is back online.
 
 ### Security & maintenance notes (audit update)
 
@@ -182,14 +187,44 @@ deployment (step 1.4) — the URL stays the same.
   that address. The sign-in screen has a two-panel layout (brand panel plus form; compact on phones), show/hide
   password, Caps Lock warning, and works in light and dark mode.
 
+### Security & offline update (November 2026)
+
+- **Deploy workflow fixed.** The workflow GitHub actually ran (`.github/workflows/`) was an older copy;
+  the newer one was in the repository root, where GitHub ignores it, next to a stray
+  `deploy-pages (1).yml` that would have made it fail. There is now one workflow, in
+  `.github/workflows/`. It gives each job only the permissions it needs (the build job can only read),
+  does not keep the checkout credentials, syntax-checks the `apps-script/` files, and keeps the
+  generated `Index.html` for 30 days. `dependabot.yml` moved to `.github/`, the only place GitHub reads it.
+- **Clickjacking:** `frame-guard.js` hides the app when another site shows it in a frame (GitHub Pages
+  cannot send the header that normally prevents this). `allowFraming: true` in `config.js` turns it off.
+- **Content-Security-Policy** now also upgrades any `http:` request to `https:`. The inline `onsubmit`
+  handlers, which the policy was silently blocking, were removed; the build now refuses inline
+  scripts and handlers in `index.html` so this cannot creep back.
+- **Shared computers:** a session without *Keep me signed in* signs out after `idleLockMinutes` (30)
+  with no activity. Unsent offline changes stay on the device.
+- **Session tokens** are longer (244 random bits) and the sign-in rejects over-long input. Sessions
+  created before this update keep working.
+- **Busy server:** when Apps Script answers "busy" (another update holds the lock, or a Google quota),
+  everyday changes stay in the outbox and are retried automatically instead of being marked as
+  refused; screens fall back to the saved copy.
+- **Canteen corrections:** a wrong canteen payment is *reversed* (kept on record, receipt marked
+  REVERSED), a wrong meal is removed. New permissions in Settings → Roles: *reverse canteen payments &
+  remove meals*, *delete canteen expenses*, *change canteen settings*. Roles that had the old "Void"
+  permission keep the first two.
+- **More saved for offline:** each class's subjects (score entry), this month's canteen expenses,
+  student search, a single student, one class's canteen balances and fee overview.
+
 ### Known limits
 
 - Things entered offline (expenses, scores, conduct, attendance, canteen) are stamped with the term the
   device knew about **when they were made**; the server accepts that only for the current or the
   immediately previous term. **Fee payments are the exception**: money received after a rollover is
   stamped with the term in which it syncs, so it reduces what the student owes now.
-- Fee overview and balances shown offline do not include payments still in
-  the outbox (the outbox and its count are shown instead).
+- Balances shown include *payments* waiting in the outbox, but not meals from a canteen register
+  saved offline (the register itself shows them). A fee item breakdown (which component a
+  payment went to) is worked out by the server when the payment arrives.
+- An offline canteen account worked out from the saved balance list has no history until the
+  device is back online.
 
 ### Test locally
 
@@ -208,3 +243,5 @@ work. The browser DevTools → Network → *Offline* switch simulates no interne
 | "Unknown action: …" | The backend is older than the app: publish a new deployment version. |
 | "This app isn't connected to its server yet" | No URL configured — see setup step 2.3. |
 | Offline the app shows the sign-in page | *Keep me signed in* was not ticked at the last sign-in (by design for shared devices). |
+| The app shows only "Open iSmartSchool in its own window" | It was opened inside another website's frame. Open the link, or set `allowFraming: true` in `config.js` if you embed it on purpose. |
+| Signed out after a break | The device was used without *Keep me signed in*: it signs out after `idleLockMinutes` (30) without activity. |

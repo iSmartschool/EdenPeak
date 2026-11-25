@@ -10,7 +10,11 @@
  *  Reads       get… / search… calls are network-first. Every successful
  *              answer is saved on this device (IndexedDB, per user). When
  *              the server can't be reached, the saved answer is used and
- *              the app shows when it was saved.
+ *              the app shows when it was saved. On a slow connection the
+ *              saved answer is shown after `slowNetworkSeconds` while the
+ *              live answer keeps loading in the background (and is saved).
+ *              Payments still waiting in the outbox are added to the fee and
+ *              canteen balances shown, so nobody is asked to pay twice.
  *
  *  Writes      The everyday writes that are safe to repeat (fee & canteen
  *              payments, expenses, attendance, canteen register, scores,
@@ -34,6 +38,14 @@
   var CACHE_DAYS = Math.max(1, Number(CFG.offlineCacheDays) || 30);
   var PREFETCH_MIN = CFG.prefetchEveryMinutes === 0 ? 0 : Math.max(2, Number(CFG.prefetchEveryMinutes) || 10);
   var PROTOCOL_VERSION = 1;
+  // Seconds a read may take before the copy saved on this device is shown instead (0 = always wait).
+  var SLOW_MS = CFG.slowNetworkSeconds === 0 ? 0 : Math.max(3, Number(CFG.slowNetworkSeconds) || 8) * 1000;
+  // After a change, screens always wait for the live answer for this long, so a balance that
+  // was just changed is never shown from an older saved copy.
+  var FRESH_AFTER_WRITE_MS = 120000;
+  var lastWriteAt = 0;
+  // Server replies that mean "not now" rather than "no": the change is kept and retried.
+  var TRANSIENT_RE = /system is busy|server is busy|Service invoked too many times|Exceeded maximum execution time|too many simultaneous|timed out|temporarily unavailable|try again later/i;
   // Several schools can be hosted under one address
   // (ismartschool.github.io/SchoolA/, …/SchoolB/). Browsers treat those as ONE
   // site, so every name stored on the device carries this copy's folder:
@@ -245,7 +257,7 @@
         google.script.run.withSuccessHandler(resolve).withFailureHandler(function (err) {
           var msg = err && err.message ? err.message : String(err);
           if (/NetworkError|network connection|failed to fetch/i.test(msg)) reject(makeError(OFFLINE_MSG._default, { offline: true, kind: 'network', name: 'OfflineError' }));
-          else reject(err instanceof Error ? err : new Error(msg));
+          else reject(makeError(msg, { transient: TRANSIENT_RE.test(msg) }));
         })[fn](params);
       });
     }
@@ -272,7 +284,10 @@
           throw makeError('The server sent an unexpected reply' + (title ? ' (' + title.trim() + ')' : '') +
             '. Check that the Apps Script deployment includes Api.gs and is set to "Anyone" (see README).', { code: 'BAD_RESPONSE', transient: true });
         }
-        if (!body.ok) throw makeError(body.error || 'The server could not complete the request.', { code: body.code || 'SERVER' });
+        if (!body.ok) {
+          var msg = body.error || 'The server could not complete the request.';
+          throw makeError(msg, { code: body.code || 'SERVER', transient: body.code === 'BUSY' || (body.code !== 'UNKNOWN_FUNCTION' && TRANSIENT_RE.test(msg)) });
+        }
         return body.result === undefined ? null : body.result;
       });
     }, function (err) {
@@ -362,6 +377,50 @@
       });
     },
     getAttendanceForDate: function () { return Promise.resolve({ data: {}, savedAt: null, assumed: true }); },
+    // One student's canteen account from the saved list of every balance, so a payment can be
+    // taken offline for any student, not only the ones whose account was opened online.
+    getCanteenStudentAccount: function (params) {
+      return cacheGet('getCanteenBalances', { classCode: 'All' }).then(function (e) {
+        var st = e && e.data && (e.data.students || []).filter(function (x) { return String(x.studentID) === String(params.sid); })[0];
+        if (!st) return null;
+        var set = e.data.settings || {};
+        return { savedAt: e.savedAt, data: { success: true, derived: true, student: { studentID: st.studentID, name: st.name, cls: st.cls },
+          rate: st.rate, balance: st.balance, status: st.status, days: st.days, extra: st.extra,
+          settings: { allowCredit: set.allowCredit, creditLimit: set.creditLimit }, transactions: [] } };
+      });
+    },
+    getCanteenBalances: function (params) {
+      if (!params.classCode || params.classCode === 'All') return Promise.resolve(null);
+      return cacheGet('getCanteenBalances', { classCode: 'All' }).then(function (e) {
+        if (!e || !e.data) return null;
+        var d = clone(e.data); d.students = (d.students || []).filter(function (x) { return x.cls === params.classCode; });
+        return { data: d, savedAt: e.savedAt };
+      });
+    },
+    getClassFeeOverview: function (params) {
+      return cacheGet('getAllFeeOverview', {}).then(function (e) {
+        var g = e && Array.isArray(e.data) && e.data.filter(function (x) { return x.className === params.classCode; })[0];
+        return e ? { data: g ? g.students : [], savedAt: e.savedAt } : null;
+      });
+    },
+    getStudentById: function (params) {
+      return cacheGet('getAllStudents', {}).then(function (e) {
+        var st = e && (e.data || []).filter(function (x) { return String(x.StudentID) === String(params.sid); })[0];
+        return st ? { data: st, savedAt: e.savedAt } : null;
+      });
+    },
+    searchStudents: function (params) {
+      return cacheGet('getAllStudents', {}).then(function (e) {
+        if (!e) return null;
+        var t = String(params.term || '').toLowerCase(), cf = params.classFilter;
+        var list = (e.data || []).filter(function (x) {
+          if (cf && cf !== 'All' && x.Class !== cf) return false;
+          return !t || String(x.FullName || '').toLowerCase().indexOf(t) >= 0 || String(x.StudentID || '').toLowerCase().indexOf(t) >= 0 ||
+                 String(x.ParentName || '').toLowerCase().indexOf(t) >= 0;
+        });
+        return { data: list, savedAt: e.savedAt };
+      });
+    },
     getAllStudents: function (params) {
       if (!params.classFilter || params.classFilter === 'All') return Promise.resolve(null);
       return cacheGet('getAllStudents', {}).then(function (e) {
@@ -369,11 +428,14 @@
       });
     }
   };
-  function fromCache(fn, params, cause) {
+  function savedCopy(fn, params) {
     return cacheGet(fn, params).then(function (e) {
       if (e) return e;
       return DERIVE[fn] ? DERIVE[fn](withoutToken(params)) : null;
-    }).then(function (e) {
+    }).catch(function () { return null; });
+  }
+  function fromCache(fn, params, cause) {
+    return savedCopy(fn, params).then(function (e) {
       if (!e) {
         throw makeError(cause && cause.kind === 'unreachable'
           ? "The school server can't be reached, and this screen hasn't been saved on this device yet."
@@ -417,7 +479,91 @@
     return outboxMem.filter(function (i) { return i.user === session.email && i.status === 'pending' && i.fn === fn; })
       .sort(function (a, b) { return a.createdAt - b.createdAt; });
   }
+  // Payments waiting in the outbox, per student: { sid: [{ amount, date, … }] }.
+  function pendingFees() {
+    var m = {};
+    pendingFor('recordFeePayment').forEach(function (i) {
+      var p = i.params, sid = String(p.studentID || ''), amt = round2(p.amountPaid);
+      if (!sid || !(amt > 0)) return;
+      (m[sid] = m[sid] || []).push({ amount: amt, date: p.paymentDate || '', feeType: p.feeType || 'General Payment', method: p.paymentMethod || 'Cash' });
+    });
+    return m;
+  }
+  function pendingCanteen() {
+    var m = {};
+    pendingFor('recordCanteenPayment').forEach(function (i) {
+      var p = i.params, sid = String(p.studentID || '');
+      if (!sid) return;
+      (m[sid] = m[sid] || []).push({ debt: p.mode === 'debt', amount: round2(p.amount), date: p.date || '', method: p.method || 'Cash' });
+    });
+    return m;
+  }
+  function sumPending(list) { return round2((list || []).reduce(function (t, x) { return t + (x.amount || 0); }, 0)); }
+  // Same rules as the server (canteenStatus_): owes / prepaid days / clear.
+  function canteenStatus(bal, rate) {
+    if (bal < -0.004) return { status: 'Owes', days: rate > 0 ? Math.ceil(-bal / rate - 0.0001) : 0, extra: 0 };
+    if (bal > 0.004) { var d = rate > 0 ? Math.floor(bal / rate + 0.0001) : 0; return { status: 'Prepaid', days: d, extra: round2(Math.max(0, bal - d * rate)) }; }
+    return { status: 'Clear', days: 0, extra: 0 };
+  }
+  function applyCanteen(bal, list) {
+    (list || []).forEach(function (x) { bal = round2(bal + (x.debt ? Math.max(0, -bal) : x.amount)); });
+    return bal;
+  }
+  function feeRowStatus(row, paidKey, balKey, dueKey) {
+    return (row[balKey] <= 0.004 || (dueKey && row[dueKey] <= 0)) ? 'Full' : (row[paidKey] > 0 ? 'Partial' : 'Not Paid');
+  }
   var OVERLAY = {
+    getAllFeeOverview: function (r) {
+      var m = pendingFees(); if (!Array.isArray(r) || !Object.keys(m).length) return r;
+      r.forEach(function (g) { (g.students || []).forEach(function (st) {
+        var add = sumPending(m[st.studentID]); if (!add) return;
+        st.totalPaid = round2(st.totalPaid + add); st.balance = round2(st.balance - add);
+        st.paymentStatus = feeRowStatus(st, 'totalPaid', 'balance', 'totalDue'); st.pendingSync = add;
+      }); });
+      return r;
+    },
+    getClassFeeOverview: function (r) {
+      var m = pendingFees(); if (!Array.isArray(r) || !Object.keys(m).length) return r;
+      r.forEach(function (st) {
+        var add = sumPending(m[st.studentID]); if (!add) return;
+        st.totalPaid = round2(st.totalPaid + add); st.balance = round2(st.balance - add);
+        st.paymentStatus = feeRowStatus(st, 'totalPaid', 'balance', 'totalDue'); st.pendingSync = add;
+      });
+      return r;
+    },
+    getStudentFeeSummary: function (r, p) {
+      var list = pendingFees()[String(p.sid)]; if (!r || !r.success || !list) return r;
+      var add = sumPending(list);
+      r.totalPaid = round2(r.totalPaid + add); r.totalBalance = round2(r.totalBalance - add);
+      r.paymentStatus = feeRowStatus(r, 'totalPaid', 'totalBalance', 'totalDue'); r.pendingSync = add;
+      r.payments = list.map(function (x) { return { transactionID: null, date: x.date, component: x.feeType, amount: x.amount, receipt: 'waiting to send', method: x.method, reversed: false, pending: true }; })
+        .concat(r.payments || []);
+      return r;
+    },
+    getStudentPaymentHistory: function (r, p) {
+      var list = pendingFees()[String(p.sid)]; if (!r || !r.success || !list) return r;
+      r.payments = list.map(function (x) { return { date: x.date, term: '', academicYear: '', feeType: x.feeType, amount: x.amount, method: x.method,
+        receipt: 'waiting to send', transactionID: null, reversed: false, pending: true }; }).concat(r.payments || []);
+      return r;
+    },
+    getCanteenBalances: function (r) {
+      var m = pendingCanteen(); if (!r || !Array.isArray(r.students) || !Object.keys(m).length) return r;
+      r.students.forEach(function (st) {
+        if (!m[st.studentID]) return;
+        st.balance = applyCanteen(st.balance, m[st.studentID]);
+        var c = canteenStatus(st.balance, st.rate); st.status = c.status; st.days = c.days; st.extra = c.extra; st.pendingSync = true;
+      });
+      return r;
+    },
+    getCanteenStudentAccount: function (r, p) {
+      var list = pendingCanteen()[String(p.sid)]; if (!r || !r.success || !list) return r;
+      var before = r.balance;
+      r.balance = applyCanteen(r.balance, list);
+      var c = canteenStatus(r.balance, r.rate); r.status = c.status; r.days = c.days; r.extra = c.extra; r.pendingSync = round2(r.balance - before);
+      r.transactions = list.map(function (x) { return { txId: null, date: x.date, type: 'PAYMENT', days: 0, amount: x.debt ? 0 : x.amount, method: x.method,
+        receipt: '', notes: x.debt ? 'Full debt — waiting to send' : 'Waiting to send', pending: true }; }).concat(r.transactions || []);
+      return r;
+    },
     getAttendanceForDate: function (r, p) {
       r = r || {};
       pendingFor('markAttendanceBatch').forEach(function (i) {
@@ -428,6 +574,8 @@
     },
     getCanteenRegister: function (r, p) {
       if (!r || !Array.isArray(r.rows)) return r;
+      var pay = pendingCanteen();
+      if (Object.keys(pay).length) r.rows.forEach(function (row) { if (pay[row.studentID]) row.base = applyCanteen(row.base, pay[row.studentID]); });
       var m = {};
       pendingFor('saveCanteenRegister').forEach(function (i) {
         if (i.params.date !== p.date) return;
@@ -561,11 +709,15 @@
             summary.attention++;
             return saveItem(item).then(function () { return remember(item, result); }).then(next);
           }
-          summary.sent++; summary.results.push({ label: item.label, result: result });
+          summary.sent++; summary.results.push({ label: item.label, result: result }); lastWriteAt = Date.now();
           return removeItem(item.id).then(function () { return remember(item, result); }).then(next);
         }, function (err) {
-          if (err && (err.offline || err.transient)) {          // connection lost or server hiccup: keep it, stop for now
+          if (err && err.offline) {                             // connection lost: keep it, stop for now
             item.lastError = err.message; markUnreachable(err.kind);
+            return saveItem(item).then(finish);
+          }
+          if (err && err.transient) {                           // server busy / hiccup: keep it, retry in a minute
+            item.lastError = 'Server busy — will retry automatically. (' + err.message + ')';
             return saveItem(item).then(finish);
           }
           if (/Session expired|Not authenticated/i.test(err && err.message)) {
@@ -625,18 +777,49 @@
 
     if (knownOffline) return ready.then(function () { return onNetworkFailure({ kind: 'network' }); });
 
+    function onLive(result) {
+      if (fn !== 'logoutUser') markOnline();
+      if (fn === 'getSchoolConfig') notePeriod(result);
+      if (read) cachePut(fn, params, result);
+      else if (result && result.success !== false) lastWriteAt = Date.now();
+      return result;
+    }
     // Older changes waiting in the outbox go first, so a newer change made
     // online can never be overwritten by an older one sent later.
     var before = (!read && !NO_FLUSH_FIRST[fn] && state.pending > 0) ? flush() : Promise.resolve();
     return before.then(function () {
-      return remote(fn, params, timeoutFor(fn));
-    }).then(function (result) {
-      if (fn !== 'logoutUser') markOnline();
-      if (fn === 'getSchoolConfig') notePeriod(result);
-      if (read) { cachePut(fn, params, result); return overlay(fn, params, clone(result)); }
-      return result;
-    }, function (err) {
+      var live = remote(fn, params, timeoutFor(fn));
+      if (!read || NO_CACHE[fn] || !SLOW_MS || !scopeFor(fn) || Date.now() - lastWriteAt < FRESH_AFTER_WRITE_MS) {
+        return live.then(onLive).then(function (r) { return read ? overlay(fn, params, clone(r)) : r; });
+      }
+      // Slow connection: after SLOW_MS show the saved copy (if there is one); the live answer
+      // keeps loading and replaces the saved copy for next time.
+      return new Promise(function (resolve, reject) {
+        var settled = false, timer = setTimeout(function () {
+          timer = null;
+          savedCopy(fn, params).then(function (e) {
+            if (settled || !e) return;
+            settled = true;
+            if (e.savedAt) setState({ stale: { savedAt: e.savedAt, fn: fn, slow: true } });
+            emit('slow', { fn: fn, savedAt: e.savedAt });
+            resolve(overlay(fn, params, clone(e.data)));
+          });
+        }, SLOW_MS);
+        live.then(function (r) {
+          onLive(r);
+          if (timer) clearTimeout(timer);
+          if (!settled) { settled = true; resolve(overlay(fn, params, clone(r))); }
+        }, function (err) {
+          if (timer) clearTimeout(timer);
+          if (settled) { if (err && err.offline) markUnreachable(err.kind); return; }
+          settled = true; reject(err);
+        });
+      });
+    }).then(null, function (err) {
       if (err && err.offline) return onNetworkFailure(err);
+      // Server busy: reads fall back to the saved copy, everyday writes wait in the outbox.
+      if (err && err.transient && read && !NO_CACHE[fn]) return fromCache(fn, params, { kind: 'unreachable' }).catch(function () { throw err; });
+      if (err && err.transient && rule) return enqueue(fn, params);
       throw err;
     });
   }

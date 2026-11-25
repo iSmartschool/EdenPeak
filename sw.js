@@ -17,7 +17,7 @@ const BUILD_ID = '__BUILD_ID__';
 const PRECACHE = /*__PRECACHE_LIST__*/[
   './', 'index.html', 'config.js', 'manifest.webmanifest',
   'assets/css/app.css', 'assets/css/offline.css',
-  'assets/js/theme-init.js', 'assets/js/api.js', 'assets/js/app.js', 'assets/js/sync-ui.js', 'assets/js/pwa.js',
+  'assets/js/frame-guard.js', 'assets/js/theme-init.js', 'assets/js/api.js', 'assets/js/app.js', 'assets/js/sync-ui.js', 'assets/js/pwa.js',
   'assets/icons/favicon.svg', 'assets/icons/favicon-32.png', 'assets/icons/icon-192.png', 'assets/icons/icon-512.png',
   'assets/icons/maskable-512.png', 'assets/icons/apple-touch-icon.png'
 ]/*__END_PRECACHE_LIST__*/;

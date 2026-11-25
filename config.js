@@ -25,5 +25,18 @@ window.ISS_CONFIG = {
 
   // Payroll screens (salaries, bank details) are not kept on devices. Set to true only if every
   // device that opens the app is private to the person using it.
-  cachePayroll: false
+  cachePayroll: false,
+
+  // On a slow connection, after this many seconds a screen shows the copy saved on this
+  // device while the live answer keeps loading (it is saved for next time). 0 = always wait.
+  slowNetworkSeconds: 8,
+
+  // Shared computers: a session WITHOUT "Keep me signed in" is signed out after this many
+  // minutes with no activity (minimum 5). 0 turns it off. Devices that keep the sign-in are
+  // never signed out this way, so they still open offline.
+  idleLockMinutes: 30,
+
+  // Leave false. true lets other websites show this app inside a frame (only needed if you
+  // embed it on purpose, e.g. in Google Sites).
+  allowFraming: false
 };

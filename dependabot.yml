@@ -1,0 +1,7 @@
+# Keeps the GitHub Actions used by the deploy workflow up to date (a pull request is opened for each new release).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="description" content="iSmartSchool – school management for GES schools: students, fees, canteen, attendance, results, report cards and payroll. Works offline.">
   <meta name="theme-color" content="#152230">
@@ -17,6 +17,8 @@
   <link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="assets/icons/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <script src="config.js"></script>
+  <script src="assets/js/frame-guard.js"></script>
   <script src="assets/js/theme-init.js"></script>
   <link rel="stylesheet" href="assets/css/app.css">
   <link rel="stylesheet" href="assets/css/offline.css">
@@ -48,7 +50,7 @@
             <h2>Welcome back</h2>
             <p>Sign in with your username to continue.</p>
           </header>
-          <form id="loginFormEl" novalidate onsubmit="return false">
+          <form id="loginFormEl" novalidate>
             <div class="field">
               <label for="loginUsername">Username</label>
               <div class="input-wrap">
@@ -110,7 +112,6 @@
 <div id="printOverlay" class="print-overlay"><div id="printContent"></div></div>
 <div id="modalContainer"></div>
 <div id="toastHost" class="toast-host" aria-live="polite"></div>
-<script src="config.js"></script>
 <script src="assets/js/api.js"></script>
 <script src="assets/js/app.js"></script>
 <script src="assets/js/sync-ui.js"></script>
