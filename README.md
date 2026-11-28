@@ -220,6 +220,27 @@ deployment (step 1.4) — the URL stays the same.
 - **Offline attendance fix:** for a date whose attendance is not saved on the device, only the
   students you mark are sent, so absences already recorded on the server are never overwritten.
 
+### Fee write-offs
+
+Fees → **✂️ Write-offs** (Admin, or a role given *Write off fees…* in Settings → Roles).
+
+- For fees a student will not pay: **left the school** owing, **ill and could not write the exams**
+  the exam fee was for, financial hardship, bereavement. Choose the student (everyone who owes is
+  listed, including students who left and graduates), then the whole balance or one item (e.g.
+  *Exams Fee*), the amount, the reason and the details.
+- A write-off is **not a payment**: no income is recorded. It reduces what the student owes, shows
+  on their fee breakdown and payment history, in the Financial Summary (*Written Off*), and as a
+  memorandum line on the Income & Expenditure statement. Each one gets a reference (`WO/20262027/0001`),
+  is audit-logged, and is listed in the **write-off register** (export to CSV).
+- A write-off can be reversed (with a reason) while its term is open; it stays in the register
+  marked *Reversed*. After rollover the balance carried forward already reflects it.
+- **Students who left** (Inactive) no longer disappear from the fees: they are listed under
+  *Left school (owing)* in the fee overview, can still pay, and their unpaid balance is carried
+  forward at rollover. The term they left in is charged in full; later terms only carry arrears.
+  (Students made inactive before this update are treated as having left in an earlier term.)
+- In the Fees_Ledger sheet a write-off is a row with Status `Write-off`, AmountDue = −amount,
+  AmountPaid = 0 and the reason in the PaymentMethod column. Online only.
+
 ### Known limits
 
 - Things entered offline (expenses, scores, conduct, attendance, canteen) are stamped with the term the

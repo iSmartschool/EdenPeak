@@ -926,6 +926,31 @@
       st.paymentStatus = feeRowStatus(st, 'totalPaid', 'totalBalance', 'totalDue');
       allocate(st.breakdown, amt);
     });
+    if (fn === 'writeOffFees' && result && result.success && !result.duplicate) {
+      var woAmt = round2(p.amount), woItem = String(p.component || '').toLowerCase();
+      edit('getFeeSummariesOffline', function (d) {
+        var st = d.students && d.students[sid];
+        if (!st || !(woAmt > 0)) return false;
+        st.totalBalance = round2(st.totalBalance - woAmt); st.totalDue = round2(st.totalDue - woAmt);
+        st.totalWrittenOff = round2((st.totalWrittenOff || 0) + woAmt);
+        st.paymentStatus = feeRowStatus(st, 'totalPaid', 'totalBalance', 'totalDue');
+        var left = woAmt, list = (st.breakdown || []).slice();
+        var hit = woItem ? list.filter(function (b) { return String(b.component).toLowerCase() === woItem; }) : list.slice().reverse();
+        hit.forEach(function (b) {
+          var t = Math.min(left, Math.max(0, b.balance || 0)); if (!(t > 0)) return;
+          b.expected = round2(b.expected - t); b.balance = round2(b.balance - t); b.writtenOff = round2((b.writtenOff || 0) + t); left = round2(left - t);
+        });
+      });
+      edit('getAllFeeOverview', function (d) {
+        var hit = false;
+        (Array.isArray(d) ? d : []).forEach(function (g) { (g.students || []).forEach(function (x) {
+          if (String(x.studentID) !== sid) return;
+          x.balance = round2(x.balance - woAmt); x.totalDue = round2(x.totalDue - woAmt); x.writtenOff = round2((x.writtenOff || 0) + woAmt);
+          x.paymentStatus = feeRowStatus(x, 'totalPaid', 'balance', 'totalDue'); hit = true;
+        }); });
+        if (!hit) return false;
+      });
+    }
     if (fn === 'recordFeePayment' && result && !result.duplicate) edit('getAllFeeOverview', function (d) {
       var amt = round2(p.amountPaid), hit = false;
       if (!Array.isArray(d) || !(amt > 0)) return false;

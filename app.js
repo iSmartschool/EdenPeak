@@ -972,7 +972,9 @@ var App = {
           '<button class="btn tab-btn active" data-ftab="overview">💳 Make Payment</button>'+
           (s.can('fees.adjust')?'<button class="btn tab-btn" data-ftab="individual">✏️ Edit Fees</button>':'')+
           '<button class="btn tab-btn" data-ftab="history">📜 Payment History</button>'+
+          (s.can('fees.writeoff')?'<button class="btn tab-btn" data-ftab="writeoff">✂️ Write-offs</button>':'')+
         '</div>'+
+        '<div id="feeWriteOffPanel" style="display:none;"></div>'+
         '<div id="feeIndividualPanel" style="display:none;">'+
           '<div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">'+
             '<select id="feeClassFilter" class="form-control" style="width:auto;">'+classOpts+'</select>'+
@@ -989,19 +991,20 @@ var App = {
         '</div>'+
         '<div id="feeOverviewPanel">'+
           '<div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">'+
-            '<select id="ovClassFilter" class="form-control" style="width:auto;min-width:160px;">'+classOpts+'<option value="GRADUATED">Graduated (arrears)</option></select>'+
+            '<select id="ovClassFilter" class="form-control" style="width:auto;min-width:160px;">'+classOpts+'<option value="GRADUATED">Graduated (arrears)</option><option value="LEFT">Left school (owing)</option></select>'+
             '<select id="ovStatusFilter" class="form-control" style="width:auto;"><option value="All">All Statuses</option><option value="Full">Fully Paid</option><option value="Partial">Partial</option><option value="Not Paid">Not Paid</option></select>'+
             '<input id="ovSearch" class="form-control" placeholder="Search name or ID…" style="flex:1;min-width:160px;">'+
             '<button class="btn btn-secondary" id="ovRefreshBtn" style="margin-top:5px;">🔄 Refresh</button>'+
             '<button class="btn btn-secondary" id="ovExportBtn" style="margin-top:5px;">📥 Export CSV</button>'+
           '</div><div id="ovSummaryBar"></div><div id="ovTableWrap"></div>'+
         '</div>';
-      var panels={overview:'feeOverviewPanel',individual:'feeIndividualPanel',history:'feeHistoryPanel'};
+      var panels={overview:'feeOverviewPanel',individual:'feeIndividualPanel',history:'feeHistoryPanel',writeoff:'feeWriteOffPanel'};
       el.querySelectorAll('[data-ftab]').forEach(function(btn){
         btn.onclick=function(){
           el.querySelectorAll('[data-ftab]').forEach(function(b){ b.classList.toggle('active', b===btn); });
           Object.keys(panels).forEach(function(k){ document.getElementById(panels[k]).style.display = k===btn.dataset.ftab?'':'none'; });
           if (btn.dataset.ftab==='overview') s._renderFeeOverviewTable();
+          if (btn.dataset.ftab==='writeoff') s._loadWriteOffPanel();
         };
       });
       document.getElementById('feeClassFilter').onchange=function(){ document.getElementById('feeStudentSelect').innerHTML=s.studentOptions(students,this.value,'Select student'); };
@@ -1019,6 +1022,140 @@ var App = {
       s._reloadFeeOverview();
     }).catch(function(e){ el.innerHTML=s.errHtml(e); });
   },
+  /* ── Fee write-offs (permission "fees.writeoff"; Admin always) ──
+     For fees a student will never pay: left the school owing, ill and could
+     not write the exams, hardship… A write-off is not a payment: it is never
+     income. It needs a reason, is listed in the register below, and can be
+     reversed while its term is open. Online only. */
+  _woReasons: ['Left school','Illness — missed exams','Financial hardship','Bereavement','Other'],
+  _loadWriteOffPanel: function(){
+    var s=this, el=document.getElementById('feeWriteOffPanel'); if (!el) return;
+    el.innerHTML=
+      '<div class="fee-card" style="margin-bottom:20px;">'+
+        '<h3 style="margin:0 0 6px;">✂️ Write off fees</h3>'+
+        '<p style="color:var(--text-muted);font-size:13px;margin:0 0 12px;">For fees a student will not pay — for example they <b>left the school</b> owing, or were <b>ill and could not write the exams</b> the exam fee was for. It is not a payment (no income is recorded): it reduces what the student owes, needs a reason, and is kept in the register below.</p>'+
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;">'+
+          '<input id="woSearch" class="form-control" placeholder="Search name or ID…" style="flex:1;min-width:150px;">'+
+          '<select id="woStudent" class="form-control" style="flex:2;min-width:220px;"><option value="">Loading students who owe…</option></select>'+
+          '<button class="btn" id="woLoadBtn" style="margin-top:5px;">Load</button>'+
+        '</div><div id="woForm" style="margin-top:12px;"></div>'+
+      '</div>'+
+      '<div id="woRegister">'+s.spinner+'</div>';
+    var owing=[];
+    var fill=function(){
+      var q=(document.getElementById('woSearch').value||'').toLowerCase(), groups={};
+      owing.filter(function(r){ return !q || String(r.studentName).toLowerCase().indexOf(q)>=0 || String(r.studentID).toLowerCase().indexOf(q)>=0; })
+        .forEach(function(r){ (groups[r.group]=groups[r.group]||[]).push(r); });
+      var keys=Object.keys(groups);
+      document.getElementById('woStudent').innerHTML = keys.length ? '<option value="">Select a student who owes ('+owing.length+')</option>'+keys.map(function(g){
+        return '<optgroup label="'+s.escapeHtml(g)+'">'+groups[g].map(function(r){ return '<option value="'+s.escapeHtml(r.studentID)+'">'+s.escapeHtml(r.studentName+' ('+r.studentID+') — owes '+s.money(r.balance))+'</option>'; }).join('')+'</optgroup>';
+      }).join('') : '<option value="">No student owes fees this term</option>';
+    };
+    s.call('getAllFeeOverview').then(function(data){
+      owing=[];
+      (data||[]).forEach(function(g){ (g.students||[]).forEach(function(st){ if (st.balance>0.004) owing.push({ studentID:st.studentID, studentName:st.studentName, balance:st.balance, group:g.classNameFull||g.className }); }); });
+      fill();
+    }).catch(function(e){ document.getElementById('woStudent').innerHTML='<option value="">'+s.escapeHtml(e.message)+'</option>'; });
+    document.getElementById('woSearch').addEventListener('input', s.debounce(fill, 200));
+    document.getElementById('woLoadBtn').onclick=function(){ var sid=document.getElementById('woStudent').value; if (sid) s._loadWriteOffForm(sid); else s.modal.alert('Select a student first.'); };
+    s._loadWriteOffRegister();
+  },
+  _loadWriteOffForm: function(sid){
+    var s=this, E=function(v){ return s.escapeHtml(v); }, box=document.getElementById('woForm'); box.innerHTML=s.spinner;
+    s.call('getStudentFeeSummary',{sid:sid}).then(function(sum){
+      if (!sum || !sum.success) { box.innerHTML='<p style="color:var(--red);">'+E((sum&&sum.message)||'Could not load the student.')+'</p>'; return; }
+      var st=sum.student, items=(sum.breakdown||[]).filter(function(b){ return b.balance>0.004; });
+      if (!(sum.totalBalance>0.004)) { box.innerHTML='<p style="color:var(--green);">'+E(st.fullName)+' owes nothing this term.</p>'; return; }
+      var tag=st.left?' <span class="payment-status not-paid">Left school</span>':st.graduated?' <span class="payment-status partial">Graduated</span>':'';
+      box.innerHTML=
+        '<div style="border:1px solid var(--border);border-radius:12px;padding:14px;">'+
+          '<div style="font-weight:700;font-size:15px;">'+E(st.fullName)+' <span style="color:var(--text-muted);font-weight:400;">('+E(st.class)+' | '+E(st.studentID)+')</span>'+tag+'</div>'+
+          '<div style="margin:6px 0 10px;font-size:13px;">Owes <b style="color:var(--red);">'+E(s.money(sum.totalBalance))+'</b> this term'+(sum.totalWrittenOff>0.004?' · already written off: '+E(s.money(sum.totalWrittenOff)):'')+'</div>'+
+          '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;">'+
+            '<tr style="color:var(--text-muted);font-size:11px;text-transform:uppercase;"><td style="padding:4px 6px;">Item</td><td style="padding:4px 6px;text-align:right;">Due</td><td style="padding:4px 6px;text-align:right;">Paid</td><td style="padding:4px 6px;text-align:right;">Unpaid</td></tr>'+
+            (sum.breakdown||[]).map(function(b){ return '<tr style="border-top:1px solid var(--border);"><td style="padding:5px 6px;font-weight:600;">'+E(b.isArrears?'Arrears (previous terms)':b.component)+(b.writtenOff>0.004?' <span style="font-weight:400;color:var(--text-muted);font-size:11px;">('+E(s.money(b.writtenOff))+' written off)</span>':'')+'</td>'+
+              '<td style="padding:5px 6px;text-align:right;">'+s.money(b.expected)+'</td><td style="padding:5px 6px;text-align:right;color:var(--teal);">'+s.money(b.paid)+'</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:'+(b.balance>0?'var(--red)':'var(--green)')+';">'+s.money(b.balance)+'</td></tr>'; }).join('')+
+          '</table>'+
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;">'+
+            '<select id="woItem" class="form-control" style="flex:2;min-width:200px;"><option value="" data-cap="'+sum.totalBalance+'">Whole outstanding balance — '+E(s.money(sum.totalBalance))+'</option>'+
+              items.map(function(b){ return '<option value="'+E(b.component)+'" data-cap="'+Math.min(b.balance,sum.totalBalance)+'">'+E((b.isArrears?'Arrears (previous terms)':b.component)+' — '+s.money(b.balance))+'</option>'; }).join('')+'</select>'+
+            '<input id="woAmt" class="form-control" type="number" step="0.01" min="0.01" style="flex:1;min-width:120px;" value="'+sum.totalBalance.toFixed(2)+'">'+
+          '</div>'+
+          '<select id="woReason" class="form-control"><option value="">Reason…</option>'+s._woReasons.map(function(r){ return '<option'+(st.left&&r==='Left school'?' selected':'')+'>'+E(r)+'</option>'; }).join('')+'</select>'+
+          '<textarea id="woNote" class="form-control" rows="2" placeholder="Details (required): e.g. left on 14 Nov, family moved to Kumasi; approved by the Head."></textarea>'+
+          '<div id="woErr" style="color:var(--red);font-size:13px;min-height:18px;"></div>'+
+          '<button class="btn btn-danger" id="woGo" style="margin-top:4px;">✂️ Write off</button>'+
+        '</div>';
+      var item=document.getElementById('woItem'), amt=document.getElementById('woAmt');
+      item.onchange=function(){ amt.value=(+item.selectedOptions[0].dataset.cap).toFixed(2); };
+      var idem=s.newIdemKey();
+      document.getElementById('woGo').onclick=function(){
+        var btn=this, err=document.getElementById('woErr'), a=Math.round((parseFloat(amt.value)||0)*100)/100, cap=+item.selectedOptions[0].dataset.cap;
+        var reason=document.getElementById('woReason').value, note=document.getElementById('woNote').value.trim();
+        err.textContent='';
+        if (!(a>0)) { err.textContent='Enter the amount to write off.'; return; }
+        if (a>cap+0.004) { err.textContent='At most '+s.money(cap)+' can be written off here.'; return; }
+        if (!reason) { err.textContent='Choose the reason.'; return; }
+        if (note.length<5) { err.textContent='Please give the details (who approved it, dates).'; return; }
+        var what=item.value?('"'+(item.selectedOptions[0].textContent.split(' — ')[0])+'"'):'the outstanding balance';
+        s.modal.confirm('Write off <b>'+E(s.money(a))+'</b> of '+E(what)+' for <b>'+E(st.fullName)+'</b>?<br><br>Reason: '+E(reason)+'<br><small style="color:var(--text-muted);">This is recorded in the write-off register and the audit log. It is not income.</small>').then(function(ok){
+          if (!ok) return;
+          s.safeSubmit(btn, function(){
+            return s.call('writeOffFees',{sid:sid, component:item.value, amount:a, reasonCategory:reason, reason:note, idempotencyKey:idem}).then(function(r){
+              if (!r.success) { err.textContent='❌ '+r.message; return; }
+              s._feeOvData=[];
+              return s.modal.alert('✅ '+r.message).then(function(){ s._loadWriteOffPanel(); });
+            });
+          });
+        });
+      };
+    }).catch(function(e){ box.innerHTML=s.errHtml(e); });
+  },
+  _loadWriteOffRegister: function(){
+    var s=this, el=document.getElementById('woRegister'); if (!el) return;
+    s.call('getFeeWriteOffs',{}).then(function(d){
+      if (!d || !d.success) { el.innerHTML='<p style="color:var(--red);">Could not load the register.</p>'; return; }
+      s._woReasons=d.reasons||s._woReasons;
+      var chips=Object.keys(d.byReason||{}).map(function(k){ return '<div class="stat-strip-item"><div class="ssl">'+s.escapeHtml(k)+'</div><div class="ssv">'+s.money(d.byReason[k])+'</div></div>'; }).join('');
+      el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;"><h3 style="margin:0;">📒 Write-off register — '+s.escapeHtml(d.academicYear)+'</h3>'+
+        '<button class="btn btn-secondary" id="woExport" style="margin-top:0;">📥 Export CSV</button></div>'+
+        '<div class="stat-strip"><div class="stat-strip-item"><div class="ssl">Total written off</div><div class="ssv" style="color:var(--red);">'+s.money(d.total)+'</div></div>'+chips+'</div><div id="woTable"></div>';
+      var tbl=document.getElementById('woTable');
+      if (!d.writeOffs.length) { tbl.innerHTML='<p style="color:var(--text-muted);text-align:center;padding:20px;">No fees written off this year.</p>'; }
+      else tbl.appendChild(s._buildTable(['Date','Reference','Student','Class','Term','Item','Reason','Amount','Details',''], d.writeOffs.map(function(w){
+        var tr=document.createElement('tr');
+        [s.niceDate(w.date), w.reference, w.studentName+' ('+w.studentID+')', w.className, 'T'+w.term, w.component, w.reasonCategory, s.money(w.amount), w.note].forEach(function(v,ci){
+          var td=tr.insertCell(); td.textContent=v; if (ci===7) { td.style.fontWeight='700'; if (w.reversed) td.style.textDecoration='line-through'; } if (ci===8) td.style.cssText='font-size:12px;max-width:280px;';
+        });
+        var td=tr.insertCell(); td.style.whiteSpace='nowrap';
+        if (w.reversed) { var b=document.createElement('span'); b.className='payment-status not-paid'; b.textContent='Reversed'; td.appendChild(b); }
+        else if (w.canReverse && s.can('fees.writeoff')) td.appendChild(s._btn('↩ Reverse','btn-danger',function(){
+          s.modal.show('Reverse write-off '+s.escapeHtml(w.reference),
+            'Reverse the write-off of <b>'+s.escapeHtml(s.money(w.amount))+'</b> for '+s.escapeHtml(w.studentName)+'? The amount becomes owed again.'+
+            '<textarea id="woRevReason" class="form-control" rows="2" placeholder="Reason (required)" style="margin-top:10px;"></textarea><div id="woRevErr" style="color:var(--red);font-size:13px;"></div>',
+            [{text:'Cancel',cls:'btn-secondary'},{text:'↩ Reverse',cls:'btn-danger',cb:function(){
+              var reason=document.getElementById('woRevReason').value.trim(), err=document.getElementById('woRevErr'), btn=document.getElementById('mb1');
+              if (!reason) { err.textContent='Please give a reason.'; return false; }
+              if (btn && btn.disabled) return false;
+              if (btn) btn.disabled=true; err.textContent='Reversing…';
+              s.call('reverseFeeWriteOff',{tid:w.transactionID, reason:reason}).then(function(r){
+                if (r.success) { s.modal.close(); s._feeOvData=[]; s.modal.alert('✅ '+r.message).then(function(){ s._loadWriteOffPanel(); }); }
+                else { err.textContent='❌ '+r.message; if (btn) btn.disabled=false; }
+              }).catch(function(e){ err.textContent='❌ '+e.message; if (btn) btn.disabled=false; });
+              return false;
+            }}]);
+        }));
+        return tr;
+      })));
+      document.getElementById('woExport').onclick=function(){
+        var rows=[['Date','Reference','Student ID','Student','Class','Term','Academic Year','Item','Reason','Amount (GH₵)','Details','Status']];
+        d.writeOffs.forEach(function(w){ rows.push([w.date,w.reference,w.studentID,w.studentName,w.className,w.term,w.academicYear,w.component,w.reasonCategory,w.amount.toFixed(2),w.note,w.reversed?'Reversed':'Written off']); });
+        var csv=rows.map(function(row){ return row.map(function(cell){ var v=String(cell===null||cell===undefined?'':cell); if (/^[=+\-@]/.test(v)) v="'"+v; return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(','); }).join('\n');
+        var url=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}));
+        var a=document.createElement('a'); a.href=url; a.download='fee_write_offs_'+String(d.academicYear).replace('/','-')+'.csv'; a.click(); URL.revokeObjectURL(url);
+      };
+    }).catch(function(e){ el.innerHTML=s.errHtml(e); });
+  },
   _feeOvData: [], _feeOvPage: 1, _feeOvClass: 'All', _feeOvStatus: 'All', _feeOvSearch: '',
   _reloadFeeOverview: function(){
     var s=this, wrap=document.getElementById('ovTableWrap'); if(!wrap) return;
@@ -1027,7 +1164,8 @@ var App = {
       var flat=[];
       (data||[]).forEach(function(cls){ (cls.students||[]).forEach(function(st){
         flat.push({ studentID:st.studentID, studentName:st.studentName, className:st.className, classNameFull:cls.classNameFull||st.className,
-                    arrears:st.arrears||0, termFees:st.termFees||0, totalDue:st.totalDue, totalPaid:st.totalPaid, balance:st.balance, status:st.paymentStatus });
+                    arrears:st.arrears||0, termFees:st.termFees||0, totalDue:st.totalDue, totalPaid:st.totalPaid, balance:st.balance, status:st.paymentStatus,
+                    writtenOff:st.writtenOff||0, formerClass:st.formerClass||'' });
       }); });
       s._feeOvData=flat; s._renderFeeOverviewTable();
     }).catch(function(e){ if (document.getElementById('ovTableWrap')) document.getElementById('ovTableWrap').innerHTML=s.errHtml(e); });
@@ -1055,10 +1193,10 @@ var App = {
     if (!total) { wrap.innerHTML='<p style="color:var(--text-muted);text-align:center;padding:30px;">No students match these filters.</p>'; return; }
     var rows=slice.map(function(r,i){
       var tr=document.createElement('tr'), sc=r.status==='Full'?'full':(r.status==='Partial'?'partial':'not-paid');
-      [start+i+1,r.studentID,r.studentName,r.classNameFull||r.className,r.arrears>0.004?s.money(r.arrears):'—',s.money(r.totalDue),s.money(r.totalPaid),s.money(r.balance)].forEach(function(v,ci){
+      [start+i+1,r.studentID,r.studentName,(r.formerClass?'Left ('+r.formerClass+')':(r.classNameFull||r.className)),r.arrears>0.004?s.money(r.arrears):'—',s.money(r.totalDue),s.money(r.totalPaid),s.money(r.balance)+(r.writtenOff>0.004?' ✂️':'')].forEach(function(v,ci){
         var td=tr.insertCell(); td.textContent=v;
         if(ci===4 && r.arrears>0.004){ td.style.color='var(--orange)'; td.style.fontWeight='600'; }
-        if(ci===7){ td.style.color=r.balance>0?'var(--red)':'var(--green)'; td.style.fontWeight='700'; }
+        if(ci===7){ td.style.color=r.balance>0?'var(--red)':'var(--green)'; td.style.fontWeight='700'; if (r.writtenOff>0.004) td.title=s.money(r.writtenOff)+' written off this term'; }
       });
       var stTd=tr.insertCell(); var sp=document.createElement('span'); sp.className='payment-status '+sc; sp.textContent=r.status; stTd.appendChild(sp);
       tr.insertCell().appendChild(s._btn('💳 Pay','',function(){ s._showQuickPayModal(r); }));
@@ -1144,7 +1282,7 @@ var App = {
       if (bd && sum.breakdown.length) bd.innerHTML = '<table style="width:100%;border-collapse:collapse;">'+
         '<tr style="color:var(--text-muted);font-size:11px;text-transform:uppercase;"><td style="padding:4px 6px;">Item</td><td style="padding:4px 6px;text-align:right;">Due</td><td style="padding:4px 6px;text-align:right;">Paid</td><td style="padding:4px 6px;text-align:right;">Balance</td></tr>'+
         sum.breakdown.map(function(b){
-          return '<tr style="border-top:1px solid var(--border);'+(b.isArrears?'background:rgba(255,145,0,.08);':'')+'"><td style="padding:5px 6px;font-weight:600;'+(b.isArrears?'color:var(--orange);':'')+'">'+E(b.component)+(b.isArrears?' <span style="font-weight:400;color:var(--text-muted);font-size:11px;">brought forward</span>':'')+'</td>'+
+          return '<tr style="border-top:1px solid var(--border);'+(b.isArrears?'background:rgba(255,145,0,.08);':'')+'"><td style="padding:5px 6px;font-weight:600;'+(b.isArrears?'color:var(--orange);':'')+'">'+E(b.component)+(b.isArrears?' <span style="font-weight:400;color:var(--text-muted);font-size:11px;">brought forward</span>':'')+(b.writtenOff>0.004?' <span style="font-weight:400;color:var(--text-muted);font-size:11px;">('+E(s.money(b.writtenOff))+' written off)</span>':'')+'</td>'+
             '<td style="padding:5px 6px;text-align:right;">'+s.money(b.expected)+'</td><td style="padding:5px 6px;text-align:right;color:var(--teal);">'+s.money(b.paid)+'</td>'+
             '<td style="padding:5px 6px;text-align:right;font-weight:700;color:'+(b.balance>0?'var(--red)':'var(--green)')+';">'+s.money(b.balance)+'</td></tr>';
         }).join('')+'</table>'+(sum.breakdown[0]&&sum.breakdown[0].isArrears&&sum.breakdown[0].balance>0?'<div style="color:var(--text-muted);font-size:11px;margin-top:4px;">Payments clear arrears first, then this term\'s fees.</div>':'');
@@ -1194,7 +1332,7 @@ var App = {
         var headers=['Fee Component','Amount Due','Paid','Balance']; if(mode==='edit') headers.push('Amount before scholarship (GH₵)');
         var rows=breakdown.map(function(row){
           var tr=document.createElement('tr');
-          var tdN=tr.insertCell(); tdN.textContent=row.component+(row.isCharge?' (one-off)':'')+(row.isArrears?' (brought forward)':''); tdN.style.fontWeight='600'; if (row.isArrears) tdN.style.color='var(--orange)';
+          var tdN=tr.insertCell(); tdN.textContent=row.component+(row.isCharge?' (one-off)':'')+(row.isArrears?' (brought forward)':'')+(row.writtenOff>0.004?' — '+s.money(row.writtenOff)+' written off':''); tdN.style.fontWeight='600'; if (row.isArrears) tdN.style.color='var(--orange)';
           tr.insertCell().textContent=s.money(row.expected);
           var tdP=tr.insertCell(); tdP.textContent=s.money(row.paid); tdP.style.color='var(--teal)';
           var tdB=tr.insertCell(); tdB.textContent=s.money(row.balance); tdB.style.color=row.balance>0?'var(--red)':'var(--green)'; tdB.style.fontWeight='700';
@@ -1255,6 +1393,17 @@ var App = {
       } else head+='</div>';
       if (hist.derived) head+='<p style="color:var(--gold);font-size:12px;margin:12px 0 0;">Offline: this student\'s payment history is not saved on this device. Balances are from the copy saved earlier; the full history appears once you are back online.</p>';
       card.innerHTML=head; det.appendChild(card);
+      if (sum && sum.success && (sum.writeOffs||[]).length) {
+        var wo=document.createElement('div'); wo.style.marginTop='16px';
+        wo.innerHTML='<h4 style="margin:0 0 8px;">✂️ Fees written off this term</h4>';
+        wo.appendChild(s._buildTable(['Date','Reference','Item','Reason','Amount','Note'], sum.writeOffs.map(function(w){
+          var tr=document.createElement('tr');
+          [s.niceDate(w.date), w.reference||'', w.component||'', w.reasonCategory||'', s.money(w.amount), w.note||''].forEach(function(v,ci){ var td=tr.insertCell(); td.textContent=v; if(ci===4){ td.style.fontWeight='700'; if (w.reversed) td.style.textDecoration='line-through'; } });
+          if (w.reversed) { var b=document.createElement('span'); b.className='payment-status not-paid'; b.style.marginLeft='6px'; b.textContent='Reversed'; tr.cells[1].appendChild(b); }
+          return tr;
+        })));
+        det.appendChild(wo);
+      }
       var payments=hist.payments||[];
       if(!payments.length){ var em=document.createElement('div'); em.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-muted);background:var(--bg-secondary);border-radius:12px;border:1px dashed var(--border);"><div style="font-size:32px;margin-bottom:8px;">📭</div><p>'+(hist.derived?'Payment history not saved on this device.':'No payment records found.')+'</p></div>'; det.appendChild(em); return; }
       var totalPd=payments.reduce(function(a,p){ return a+(parseFloat(p.amount)||0); },0);
@@ -1423,6 +1572,7 @@ var App = {
         '</div>'+
         '<div style="margin-top:20px;padding:18px 22px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;display:flex;justify-content:space-between;align-items:center;">'+
           '<span style="font-weight:700;font-size:16px;">'+netLabel+'</span><span style="font-weight:800;font-size:22px;color:'+netColor+';">'+s.money(Math.abs(r.netSurplus))+'</span></div>'+
+        (r.totalWrittenOff>0.004?'<div style="margin-top:14px;padding:12px 16px;border:1px dashed var(--border);border-radius:10px;font-size:13px;"><b>✂️ Fees written off in this period: '+s.money(r.totalWrittenOff)+'</b> <span style="color:var(--text-muted);">('+(r.writeOffRows||[]).map(function(x){ return s.escapeHtml(x.label)+' '+s.money(x.amount); }).join(' · ')+'). Not income and not expenditure — no money changed hands.</span></div>':'')+
         (payload.mode!=='custom'?'<p style="color:var(--text-muted);font-size:12px;margin-top:10px;">Note: expenses recorded before term-stamping was added only appear in Custom Range reports.</p>':'');
       document.getElementById('printIEBtn').onclick=function(){ document.getElementById('printContent').innerHTML=s._buildIncomeExpenditureHTML(r); App.printContent(); };
     }).catch(function(e){ out.innerHTML=s.errHtml(e); })
@@ -1446,6 +1596,7 @@ var App = {
         '<tr><td style="padding:8px 10px;font-weight:700;border-top:2px solid #CE1126;">Total Expenditure</td><td style="padding:8px 10px;font-weight:700;border-top:2px solid #CE1126;text-align:right;">'+s.money(data.totalExpenditure)+'</td></tr></tbody></table>'+
       '<div style="margin-top:22px;padding:16px 20px;background:#f5f5f5;border-radius:8px;display:flex;justify-content:space-between;align-items:center;">'+
         '<span style="font-weight:700;font-size:15px;">'+netLabel+'</span><span style="font-weight:700;font-size:20px;color:'+netColor+';">'+s.money(Math.abs(data.netSurplus))+'</span></div>'+
+      (data.totalWrittenOff>0.004?'<p style="margin-top:14px;font-size:12px;">Memorandum — fees written off in this period (not income, not expenditure): <b>'+s.money(data.totalWrittenOff)+'</b> ('+(data.writeOffRows||[]).map(function(x){ return s.escapeHtml(x.label)+' '+s.money(x.amount); }).join('; ')+').</p>':'')+
       '<p style="margin-top:26px;font-size:10px;color:#999;text-align:center;">Prepared by iSmartSchool — '+new Date().toLocaleDateString('en-GB')+'</p></div>';
   },
   showFinancialSummary: function(){
@@ -1459,9 +1610,12 @@ var App = {
         '<div class="two-col" style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;">'+
         [['Term Fees (New)',d.totalAmountDue,'var(--blue)'],['Arrears Brought Forward',d.totalRolloverOwed,'var(--purple)'],
          ['Overpayment Credit',d.totalRolloverCredit,'var(--teal)'],['Total Expected',d.totalExpected,'var(--gold)'],
-         ['Received (Term)',d.totalReceived,'var(--green)'],['Outstanding',d.totalOutstanding,d.totalOutstanding>0?'var(--red)':'var(--green)']]
+         ['Received (Term)',d.totalReceived,'var(--green)'],['Outstanding',d.totalOutstanding,d.totalOutstanding>0?'var(--red)':'var(--green)'],
+         ['Written Off (Term)',d.totalWrittenOff||0,'var(--text-muted)']]
         .map(function(cd){ return '<div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:14px;padding:20px;border-left:4px solid '+cd[2]+';"><div style="font-size:11px;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">'+cd[0]+'</div><div style="font-size:26px;font-weight:800;color:'+cd[2]+';">'+s.money(cd[1])+'</div></div>'; }).join('')+
-        '</div></div>';
+        '</div>'+
+        ((d.leftOwing||d.graduatesOwing)?'<p style="color:var(--text-muted);font-size:12px;margin-top:12px;">Outstanding includes '+(d.leftOwing||0)+' student(s) who left the school and '+(d.graduatesOwing||0)+' graduate(s) who still owe. Fees written off are not income and are not counted as outstanding.</p>':'')+
+        '</div>';
     }).catch(function(e){ c.innerHTML=s.errHtml(e); });
   },
 
