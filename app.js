@@ -1250,12 +1250,13 @@ var App = {
             '<div class="fee-stat"><div class="label">Due This Term</div><div class="value" style="color:var(--gold)">'+s.money(sum.totalDue)+'</div></div>'+
             '<div class="fee-stat"><div class="label">Paid This Term</div><div class="value" style="color:var(--green)">'+s.money(sum.totalPaid)+'</div></div>'+
             '<div class="fee-stat"><div class="label">Balance</div><div class="value" style="color:'+(sum.totalBalance>0?'var(--red)':'var(--green)')+'">'+s.money(sum.totalBalance)+'</div></div>'+
-            '<div class="fee-stat"><div class="label">All-time Payments</div><div class="value" style="color:var(--blue)">'+hist.payments.length+'</div></div>'+
+            '<div class="fee-stat"><div class="label">All-time Payments</div><div class="value" style="color:var(--blue)">'+(hist.derived?'—':hist.payments.length)+'</div></div>'+
           '</div>';
       } else head+='</div>';
+      if (hist.derived) head+='<p style="color:var(--gold);font-size:12px;margin:12px 0 0;">Offline: this student\'s payment history is not saved on this device. Balances are from the copy saved earlier; the full history appears once you are back online.</p>';
       card.innerHTML=head; det.appendChild(card);
       var payments=hist.payments||[];
-      if(!payments.length){ var em=document.createElement('div'); em.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-muted);background:var(--bg-secondary);border-radius:12px;border:1px dashed var(--border);"><div style="font-size:32px;margin-bottom:8px;">📭</div><p>No payment records found.</p></div>'; det.appendChild(em); return; }
+      if(!payments.length){ var em=document.createElement('div'); em.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-muted);background:var(--bg-secondary);border-radius:12px;border:1px dashed var(--border);"><div style="font-size:32px;margin-bottom:8px;">📭</div><p>'+(hist.derived?'Payment history not saved on this device.':'No payment records found.')+'</p></div>'; det.appendChild(em); return; }
       var totalPd=payments.reduce(function(a,p){ return a+(parseFloat(p.amount)||0); },0);
       var strip=document.createElement('div'); strip.style.cssText='display:flex;align-items:center;justify-content:space-between;margin:20px 0 12px;gap:10px;flex-wrap:wrap;';
       strip.innerHTML='<h4 style="margin:0;">Payment History ('+payments.length+' transaction'+(payments.length!==1?'s':'')+')</h4><span style="font-weight:700;color:var(--green);">Total: '+s.money(totalPd)+'</span>';
@@ -1939,8 +1940,11 @@ var App = {
         list.innerHTML=s.spinner; rows=[];
         s.call('getAttendanceForDate',{date:date}).then(function(existing){
           existing=existing||{};
+          s._attUnknown=!!existing.__unknown; s._attTouched={};
           var saved=students.filter(function(st){ return existing[st.StudentID]; }).length;
-          document.getElementById('attNote').textContent = saved ? 'Showing what was saved for this date ('+saved+' student'+(saved===1?'':'s')+'). Anyone not yet marked starts as Present.' : 'Nothing saved yet for this date — everyone starts as Present. Tap Absent for those who are not in school.';
+          document.getElementById('attNote').textContent = s._attUnknown
+            ? 'Offline: what was already saved for this date is not on this device. Only the students you tap (or "Mark all present") will be saved, so nothing recorded earlier is overwritten.'
+            : saved ? 'Showing what was saved for this date ('+saved+' student'+(saved===1?'':'s')+'). Anyone not yet marked starts as Present.' : 'Nothing saved yet for this date — everyone starts as Present. Tap Absent for those who are not in school.';
           rows=students.map(function(st){
             var v=existing[st.StudentID];
             return { sid:st.StudentID, name:st.FullName, cls:st.Class, status: (v==='Absent'||v==='Excused') ? 'Absent' : 'Present' };
@@ -1952,17 +1956,19 @@ var App = {
               '<div style="font-weight:600;color:var(--text-primary);min-width:160px;">'+s.escapeHtml(r.name)+(showClass?' <small style="color:var(--text-muted);font-weight:400;">'+s.escapeHtml(r.cls)+'</small>':'')+'</div>'+
               '<div style="display:flex;gap:8px;"><button class="att-p" data-i="'+i+'">Present</button><button class="att-a" data-i="'+i+'">Absent</button></div></div>';
           }).join('');
-          list.querySelectorAll('.att-p').forEach(function(b){ b.onclick=function(){ rows[+b.dataset.i].status='Present'; paint(+b.dataset.i); summary(); }; });
-          list.querySelectorAll('.att-a').forEach(function(b){ b.onclick=function(){ rows[+b.dataset.i].status='Absent'; paint(+b.dataset.i); summary(); }; });
+          list.querySelectorAll('.att-p').forEach(function(b){ b.onclick=function(){ rows[+b.dataset.i].status='Present'; s._attTouched[rows[+b.dataset.i].sid]=1; paint(+b.dataset.i); summary(); }; });
+          list.querySelectorAll('.att-a').forEach(function(b){ b.onclick=function(){ rows[+b.dataset.i].status='Absent'; s._attTouched[rows[+b.dataset.i].sid]=1; paint(+b.dataset.i); summary(); }; });
           rows.forEach(function(r,i){ paint(i); }); summary();
         }).catch(function(e){ list.innerHTML=s.errHtml(e); });
       };
       document.getElementById('attClass').onchange=render;
       document.getElementById('attDate').onchange=render;
-      document.getElementById('markAllPresentBtn').onclick=function(){ rows.forEach(function(r,i){ r.status='Present'; paint(i); }); summary(); };
+      document.getElementById('markAllPresentBtn').onclick=function(){ rows.forEach(function(r,i){ r.status='Present'; s._attTouched[r.sid]=1; paint(i); }); summary(); };
       document.getElementById('saveAttBtn').onclick=function(){
         if (!rows.length) { s.modal.alert('No students to save.'); return; }
-        var recs=rows.map(function(r){ return { studentID:r.sid, status:r.status }; });
+        var pick=s._attUnknown ? rows.filter(function(r){ return s._attTouched[r.sid]; }) : rows;
+        if (!pick.length) { s.modal.alert('Offline, only the students you mark are saved for this date. Tap Present or Absent for each student (or "Mark all present"), then save.'); return; }
+        var recs=pick.map(function(r){ return { studentID:r.sid, status:r.status }; });
         s.safeSubmit(this, function(){
           return s.call('markAttendanceBatch',{date:document.getElementById('attDate').value,records:recs}).then(function(res){ return s.modal.alert((res.success?'✅ ':'❌ ')+res.message); });
         });

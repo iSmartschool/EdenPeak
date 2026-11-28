@@ -76,7 +76,7 @@ The old Apps Script link keeps working; retire it whenever you like.
 |---|---|
 | **Open the app** | From its icon or bookmark, if you ticked **Keep me signed in on this device** when you last signed in. |
 | **See screens** | Any screen opened on this device while online (dashboard, students, classes, today's attendance and canteen register, fee overview, expenses, payroll staff… are refreshed automatically in the background). The banner shows when the copy was saved. |
-| **Record & save** | Attendance · canteen register · canteen payments & expenses · fee payments · expenses · scores · conduct. They wait in the **outbox** and are sent automatically, in order, when the connection returns. Canteen payments can be taken for **any** student (the account is worked out from the saved balance list). |
+| **Record & save** | Attendance · canteen register · canteen payments & expenses · fee payments · expenses · scores · conduct. They wait in the **outbox** and are sent automatically, in order, when the connection returns. Canteen payments can be taken for **any** student (the account is worked out from the saved balance list). Fee payments offer the student's real fee types (Tuition, PTA Dues, Arrears…) for **any** student, and score sheets open for **any** student with the scores already saved — from two whole-school copies the app refreshes every 30 minutes. |
 | **See correct balances** | Fee and canteen balances on screen already include payments still waiting in the outbox, marked *waiting to send*, so nobody is asked to pay twice. |
 | **Slow connection** | A screen that takes more than `slowNetworkSeconds` (8) shows the copy saved on this device straight away; the live answer keeps loading and is saved for next time. Right after you save something, screens always wait for the live answer. |
 | **Not offline** | Signing in for the first time, adding/deleting students, rollover, promotion, user & role admin, reversals (fees and canteen), payroll approval, settings. The app says so clearly instead of failing silently. |
@@ -213,6 +213,12 @@ deployment (step 1.4) — the URL stays the same.
   permission keep the first two.
 - **More saved for offline:** each class's subjects (score entry), this month's canteen expenses,
   student search, a single student, one class's canteen balances and fee overview.
+- **Offline fee payments** used to offer only "General Payment" for students not opened online
+  that day. Every student's fee breakdown is now saved (`getFeeSummariesOffline`, every 30 min),
+  so the real fee types and what is owed per item always show. Offline score sheets work the same
+  way (`getResultsOffline`).
+- **Offline attendance fix:** for a date whose attendance is not saved on the device, only the
+  students you mark are sent, so absences already recorded on the server are never overwritten.
 
 ### Known limits
 
@@ -223,8 +229,8 @@ deployment (step 1.4) — the URL stays the same.
 - Balances shown include *payments* waiting in the outbox, but not meals from a canteen register
   saved offline (the register itself shows them). A fee item breakdown (which component a
   payment went to) is worked out by the server when the payment arrives.
-- An offline canteen account worked out from the saved balance list has no history until the
-  device is back online.
+- An offline canteen account or fee payment history worked out from the saved lists has no
+  history rows until the device is back online.
 
 ### Test locally
 

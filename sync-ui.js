@@ -203,6 +203,10 @@
     if (has('canteen')) jobs.push(['getCanteenSettings'], ['getCanteenRegister', { date: d, classCode: 'All' }], ['getCanteenBalances', { classCode: 'All' }],
                                   ['getCanteenExpenses', { startDate: d.slice(0, 8) + '01', endDate: d }]);
     if (has('fees') || has('finances')) jobs.push(['getAllFeeOverview']);
+    // Whole-school bundles: every student's fee breakdown (fee types in the offline payment
+    // form) and every student's saved scores (offline score sheets). Every 30 minutes.
+    if (has('fees')) jobs.push(['getFeeSummariesOffline', {}, { everyMinutes: 30 }]);
+    if (has('results')) jobs.push(['getResultsOffline', {}, { everyMinutes: 30 }]);
     if (has('results')) {
       jobs.push(['getConductOptions'], ['getScoreWeights']);
       classes.forEach(function (c) { jobs.push(['getGESSubjects', { classCode: c.code }]); });

@@ -243,6 +243,8 @@
     ready.then(function () { return store.put('meta', { key: 'period', value: period }); }).catch(function () {});
   }
   ready.then(function () { return store.get('meta', 'period'); }).then(function (row) { if (row && row.value && !period) period = row.value; }).catch(function () {});
+  // A whole-school bundle saved in an earlier term must not be used after a rollover.
+  function currentBundle(e) { return !!(e && e.data && (!period || !e.data.term || (+e.data.term === +period.term && String(e.data.academicYear) === String(period.year)))); }
   function stampPeriod(p) { if (period && !p.term) { p.term = period.term; p.academicYear = period.year; } }
 
   /* -------------------------------------------------------------- session */
@@ -376,7 +378,10 @@
         return { data: d, savedAt: e.savedAt };
       });
     },
-    getAttendanceForDate: function () { return Promise.resolve({ data: {}, savedAt: null, assumed: true }); },
+    // Not saved on this device: what the server holds for that date is UNKNOWN. The marker tells
+    // the attendance screen to send only the students that are changed, so absences already
+    // recorded on the server for that day are never overwritten with "Present".
+    getAttendanceForDate: function () { return Promise.resolve({ data: { __unknown: true }, savedAt: null, assumed: true }); },
     // One student's canteen account from the saved list of every balance, so a payment can be
     // taken offline for any student, not only the ones whose account was opened online.
     getCanteenStudentAccount: function (params) {
@@ -401,6 +406,52 @@
       return cacheGet('getAllFeeOverview', {}).then(function (e) {
         var g = e && Array.isArray(e.data) && e.data.filter(function (x) { return x.className === params.classCode; })[0];
         return e ? { data: g ? g.students : [], savedAt: e.savedAt } : null;
+      });
+    },
+    // A student's fee breakdown (fee types in the payment form, what is owed per item) from the
+    // bundle saved for every student. If the fee overview was saved more recently (e.g. after a
+    // payment made online), its totals win and the difference is spread over the items the same
+    // way the server does it: arrears first, then the fee items in order.
+    getStudentFeeSummary: function (params) {
+      var sid = String(params.sid);
+      return Promise.all([cacheGet('getFeeSummariesOffline', {}), cacheGet('getAllFeeOverview', {})]).then(function (r) {
+        var b = currentBundle(r[0]) ? r[0] : null, ov = r[1], st = b && b.data.students && b.data.students[sid];
+        if (!st) return null;
+        var d = clone(st), savedAt = b.savedAt;
+        d.success = true; d.derived = true; d.payments = [];
+        var row = null;
+        if (ov && Array.isArray(ov.data) && ov.savedAt > b.savedAt) {
+          ov.data.forEach(function (g) { (g.students || []).forEach(function (x) { if (String(x.studentID) === sid) row = x; }); });
+        }
+        if (row) {
+          var diff = round2(row.totalPaid - d.totalPaid);
+          if (Math.abs(diff) > 0.004) { allocate(d.breakdown, diff); d.totalPaid = round2(row.totalPaid); d.totalBalance = round2(row.balance); d.paymentStatus = row.paymentStatus; }
+          savedAt = ov.savedAt;
+        }
+        return { data: d, savedAt: savedAt };
+      });
+    },
+    getStudentPaymentHistory: function (params) {
+      return cacheGet('getAllStudents', {}).then(function (e) {
+        var st = e && (e.data || []).filter(function (x) { return String(x.StudentID) === String(params.sid); })[0];
+        return st ? { savedAt: e.savedAt, data: { success: true, derived: true, studentName: st.FullName, studentID: st.StudentID, class: st.Class, payments: [] } } : null;
+      });
+    },
+    getStudentResults: function (params) {
+      return cacheGet('getResultsOffline', {}).then(function (e) {
+        if (!currentBundle(e) || !e.data.results) return null;
+        var w = e.data.weights || { classWeight: 30, examWeight: 70 }, m = e.data.results[String(params.sid)] || {};
+        return { savedAt: e.savedAt, data: Object.keys(m).map(function (sub) {
+          var v = m[sub];
+          return { subject: sub, rawClass: v[0], rawExam: v[1], classScore: Math.round(v[0] * w.classWeight / 10) / 10,
+                   examScore: Math.round(v[1] * w.examWeight / 10) / 10, total: v[2], grade: v[3] };
+        }) };
+      });
+    },
+    getStudentConduct: function (params) {
+      return cacheGet('getResultsOffline', {}).then(function (e) {
+        if (!currentBundle(e) || !e.data.conduct) return null;
+        return { savedAt: e.savedAt, data: { success: true, conduct: e.data.conduct[String(params.sid)] || null } };
       });
     },
     getStudentById: function (params) {
@@ -498,6 +549,25 @@
     });
     return m;
   }
+  // Spreads an amount paid over a fee breakdown in its order (arrears first, then the items),
+  // as the server does; anything beyond what is owed stays on the last item as credit.
+  function allocate(breakdown, amount) {
+    if (!Array.isArray(breakdown) || !breakdown.length) return;
+    var left = round2(amount);
+    if (left < 0) {                                       // a reversal: take back from the last items first
+      for (var j = breakdown.length - 1; j >= 0 && left < -0.004; j--) {
+        var c0 = breakdown[j], take = Math.min(c0.paid || 0, -left);
+        c0.paid = round2((c0.paid || 0) - take); c0.balance = round2((c0.expected || 0) - c0.paid); left = round2(left + take);
+      }
+      return;
+    }
+    breakdown.forEach(function (c, i) {
+      var room = Math.max(0, round2((c.expected || 0) - (c.paid || 0))), put = Math.min(room, left);
+      if (i === breakdown.length - 1) put = left;
+      c.paid = round2((c.paid || 0) + put); c.balance = round2(Math.max(0, (c.expected || 0) - c.paid));
+      left = round2(left - put);
+    });
+  }
   function sumPending(list) { return round2((list || []).reduce(function (t, x) { return t + (x.amount || 0); }, 0)); }
   // Same rules as the server (canteenStatus_): owes / prepaid days / clear.
   function canteenStatus(bal, rate) {
@@ -536,6 +606,7 @@
       var add = sumPending(list);
       r.totalPaid = round2(r.totalPaid + add); r.totalBalance = round2(r.totalBalance - add);
       r.paymentStatus = feeRowStatus(r, 'totalPaid', 'totalBalance', 'totalDue'); r.pendingSync = add;
+      allocate(r.breakdown, add);
       r.payments = list.map(function (x) { return { transactionID: null, date: x.date, component: x.feeType, amount: x.amount, receipt: 'waiting to send', method: x.method, reversed: false, pending: true }; })
         .concat(r.payments || []);
       return r;
@@ -710,6 +781,7 @@
             return saveItem(item).then(function () { return remember(item, result); }).then(next);
           }
           summary.sent++; summary.results.push({ label: item.label, result: result }); lastWriteAt = Date.now();
+          patchBundles(item.fn, item.params, result);
           return removeItem(item.id).then(function () { return remember(item, result); }).then(next);
         }, function (err) {
           if (err && err.offline) {                             // connection lost: keep it, stop for now
@@ -781,7 +853,7 @@
       if (fn !== 'logoutUser') markOnline();
       if (fn === 'getSchoolConfig') notePeriod(result);
       if (read) cachePut(fn, params, result);
-      else if (result && result.success !== false) lastWriteAt = Date.now();
+      else if (result && result.success !== false) { lastWriteAt = Date.now(); patchBundles(fn, params, result); }
       return result;
     }
     // Older changes waiting in the outbox go first, so a newer change made
@@ -824,6 +896,48 @@
     });
   }
 
+  // The offline bundles (every student's scores / fee breakdown) are refreshed only every
+  // 30 minutes, so a change saved online is copied into them straight away: going offline
+  // right after saving still shows what was saved.
+  function patchBundles(fn, params, result) {
+    var p = withoutToken(params), sid = String(p.studentID || p.sid || '');
+    if (!sid) return;
+    var edit = function (bundleFn, change) {
+      cacheGet(bundleFn, {}).then(function (e) {
+        if (!e || !e.data) return;
+        var d = clone(e.data);
+        if (change(d) !== false) return store.put('cache', Object.assign({}, e, { data: d }));
+      }).catch(function () {});
+    };
+    if (fn === 'recordSubjectScoreBatch' && Array.isArray(p.scores)) edit('getResultsOffline', function (d) {
+      var m = (d.results = d.results || {})[sid] = d.results[sid] || {}, w = d.weights || { classWeight: 30, examWeight: 70 };
+      (p.scores || []).forEach(function (sc) {
+        var c = parseFloat(sc.classScore), x = parseFloat(sc.examScore);
+        if (isNaN(c) || isNaN(x)) return;
+        var tot = Math.round((Math.round(c * w.classWeight / 10) / 10 + Math.round(x * w.examWeight / 10) / 10) * 10) / 10;
+        m[sc.subject] = [c, x, tot, (m[sc.subject] || [])[3] || null];
+      });
+    });
+    if (fn === 'saveStudentConduct' && p.conduct) edit('getResultsOffline', function (d) { (d.conduct = d.conduct || {})[sid] = p.conduct; });
+    if (fn === 'recordFeePayment' && result && !result.duplicate) edit('getFeeSummariesOffline', function (d) {
+      var st = d.students && d.students[sid], amt = round2(p.amountPaid);
+      if (!st || !(amt > 0)) return false;
+      st.totalPaid = round2(st.totalPaid + amt); st.totalBalance = round2(st.totalBalance - amt);
+      st.paymentStatus = feeRowStatus(st, 'totalPaid', 'totalBalance', 'totalDue');
+      allocate(st.breakdown, amt);
+    });
+    if (fn === 'recordFeePayment' && result && !result.duplicate) edit('getAllFeeOverview', function (d) {
+      var amt = round2(p.amountPaid), hit = false;
+      if (!Array.isArray(d) || !(amt > 0)) return false;
+      d.forEach(function (g) { (g.students || []).forEach(function (x) {
+        if (String(x.studentID) !== sid) return;
+        x.totalPaid = round2(x.totalPaid + amt); x.balance = round2(x.balance - amt);
+        x.paymentStatus = feeRowStatus(x, 'totalPaid', 'balance', 'totalDue'); hit = true;
+      }); });
+      if (!hit) return false;
+    });
+  }
+
   /* ------------------------------------------------------------- prefetch */
   // Keeps an up-to-date offline copy of the screens people use every day.
   function prefetch(list, force) {
@@ -839,8 +953,14 @@
         var i = 0;
         function step() {
           if (i >= list.length || !session || session.email !== me || state.network !== 'online') return true;
-          var job = list[i++];
-          return call(job[0], Object.assign({ token: session.token }, job[1] || {})).then(step, step);
+          var job = list[i++], every = job[2] && job[2].everyMinutes, jkey = key + ':' + job[0];
+          var run = function () { return call(job[0], Object.assign({ token: session.token }, job[1] || {})); };
+          if (!every || force) return run().then(step, step);
+          // Heavy jobs (whole-school bundles) run less often than the rest.
+          return store.get('meta', jkey).then(function (r) {
+            if (r && Date.now() - r.value < every * 60000) return step();
+            return run().then(function () { return store.put('meta', { key: jkey, value: Date.now() }); }).then(step, step);
+          }, step);
         }
         return step();
       });
